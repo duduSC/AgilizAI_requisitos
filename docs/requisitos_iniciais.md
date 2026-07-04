@@ -5,26 +5,32 @@ Com base nas definições de negócio levantadas, o sistema evoluiu para uma arq
 ## 1. Diagrama de Casos de Uso (Visão Geral)
 
 ```mermaid
-usecaseDiagram
-    actor Operador as "Operador (Backoffice)"
-    actor Motoboy as "Motoboy (Mobile)"
+flowchart LR
+    %% Atores
+    Operador([🧑‍💻 Operador Backoffice])
+    Motoboy([🛵 Motoboy Mobile])
     
-    package "Backoffice Web" {
-        usecase UC1 as "Visualizar Mapa de Entregas"
-        usecase UC2 as "Agrupar Entregas (Teles)"
-        usecase UC3 as "Despachar Entregas"
-        usecase UC4 as "Acompanhar Motoboys (20s)"
-        usecase UC8 as "Gerar Fechamento Financeiro"
-        usecase UC9 as "Comunicar via Chat Interno"
-    }
+    %% Sistema Backoffice
+    subgraph Backoffice ["Backoffice Web (BFF)"]
+        direction TB
+        UC1([Visualizar Mapa de Entregas])
+        UC2([Agrupar Entregas])
+        UC3([Despachar Entregas])
+        UC4([Acompanhar Motoboys])
+        UC8([Gerar Fechamento Financeiro])
+        UC9([Comunicar via Chat Interno])
+    end
     
-    package "App Mobile (Flutter)" {
-        usecase UC5 as "Ficar Disponível (Online)"
-        usecase UC6 as "Receber Nova Rota"
-        usecase UC7 as "Marcar Status (Entregue/Falhou)"
-        usecase UC10 as "Comunicar com Backoffice"
-    }
+    %% Sistema Mobile
+    subgraph Mobile ["App Mobile (Flutter)"]
+        direction TB
+        UC5([Ficar Disponível / Online])
+        UC6([Receber Nova Rota])
+        UC7([Marcar Status - Entregue/Falhou])
+        UC10([Comunicar com Backoffice])
+    end
     
+    %% Relacionamentos do Operador
     Operador --> UC1
     Operador --> UC2
     Operador --> UC3
@@ -32,13 +38,15 @@ usecaseDiagram
     Operador --> UC8
     Operador --> UC9
     
+    %% Relacionamentos do Motoboy
     Motoboy --> UC5
     Motoboy --> UC6
     Motoboy --> UC7
     Motoboy --> UC10
     
-    UC3 ..> UC5 : "Requer Motoboy Disponível"
-    UC6 ..> UC3 : "Acionado por"
+    %% Dependências (Includes/Excludes lógicos)
+    UC3 -. "Requer (include)" .-> UC5
+    UC6 -. "Disparado por" .-> UC3
 ```
 
 ## 2. Regras de Negócio Refinadas (Business Rules)
