@@ -9,10 +9,14 @@ flowchart LR
     %% Atores
     Operador([🧑‍💻 Operador Backoffice])
     Motoboy([🛵 Motoboy Mobile])
+    Gestor([🏢 Gestor])
+    APIiFood([🍔 API iFood])
     
     %% Sistema Backoffice
     subgraph Backoffice ["Backoffice Web (BFF)"]
         direction TB
+        UC11([Autorizar Integração])
+        UC12([Receber Pedidos Auto])
         UC1([Visualizar Mapa de Entregas])
         UC2([Agrupar Entregas])
         UC3([Despachar Entregas])
@@ -30,13 +34,16 @@ flowchart LR
         UC10([Comunicar com Backoffice])
     end
     
-    %% Relacionamentos do Operador
+    %% Relacionamentos do Operador e Gestor
+    Gestor --> UC11
+    Gestor --> UC8
     Operador --> UC1
     Operador --> UC2
     Operador --> UC3
     Operador --> UC4
-    Operador --> UC8
     Operador --> UC9
+    APIiFood -. "Polling/Eventos" .-> UC12
+    UC12 --> UC1
     
     %% Relacionamentos do Motoboy
     Motoboy --> UC5
@@ -86,3 +93,9 @@ Focado na experiência do Motoboy no App Flutter.
 *   **US-05: Chat Integrado**
     *   **Como** operador e motoboy, **eu quero** um chat integrado na aplicação, **para que** possamos resolver problemas rápidos sem depender do WhatsApp, mantendo o histórico oficial vinculado à entrega.
     *   *Nota Arquitetural (Para a Skill de Arquitetura): Será necessário prever uso de WebSockets (ex: Socket.io ou SignalR).*
+
+### Épico 4: Integração de Pedidos (iFood)
+*   **US-06: Autenticação de Loja (OAuth2)**
+    *   **Como** Gestor, **eu quero** clicar em "Conectar com iFood" no meu painel, **para que** meu restaurante libere acesso aos dados de entrega.
+*   **US-07: Entrada Automática no Mapa**
+    *   **Como** Operador de Despacho, **eu quero** que, assim que a loja aceitar o pedido no painel do iFood, o pino surja magicamente no meu mapa de entregas, **para que** eu ganhe tempo e não precise digitar o endereço da rua.

@@ -1,0 +1,179 @@
+erDiagram
+    direction LR
+    ESTABELECIMENTO ||--o{ USUARIO : "possui"
+    ESTABELECIMENTO ||--o{ MOTOBOY : "contrata"
+    ESTABELECIMENTO ||--o{ DISTANCIA_PRECO : "define"
+    ESTABELECIMENTO ||--o{ PEDIDO_EXTERNO : "recebe"
+    ESTABELECIMENTO ||--o{ ENTREGA : "origina"
+    ESTABELECIMENTO ||--o{ LOTE_ENTREGA : "opera"
+    ESTABELECIMENTO ||--o{ RECIBO : "emite"
+    ESTABELECIMENTO ||--|| CONFIGURACAO_INTEGRACAO : "configura"
+
+    USUARIO ||--o| MOTOBOY : "credencia"
+    USUARIO ||--o{ LOTE_ENTREGA : "despacha"
+    USUARIO ||--o{ RECIBO : "gera"
+
+    MOTOBOY ||--o{ LOTE_ENTREGA : "executa"
+    MOTOBOY ||--o{ POSICAO_GPS : "transmite"
+    MOTOBOY ||--o{ RECIBO : "recebe"
+
+    PEDIDO_EXTERNO ||--o{ PEDIDO_EXTERNO_ITEM : "contem"
+    PEDIDO_EXTERNO ||--o| ENTREGA : "gera"
+
+    LOTE_ENTREGA ||--o{ ENTREGA : "agrupa"
+    DISTANCIA_PRECO ||--o{ ENTREGA : "precifica"
+    RECIBO ||--o{ ENTREGA : "consolida"
+    ENTREGA ||--o{ ENTREGA_STATUS_HISTORICO : "registra"
+
+    ESTABELECIMENTO {
+        uuid id PK
+        varchar razao_social
+        varchar nome_fantasia
+        varchar cnpj UK
+        varchar telefone
+        varchar endereco_completo
+        decimal latitude
+        decimal longitude
+        varchar status
+        int max_pedidos_por_lote
+        timestamp criado_em
+    }
+    USUARIO {
+        uuid id PK
+        uuid estabelecimento_id FK
+        varchar nome
+        varchar login_email UK
+        varchar senha_hash
+        varchar perfil
+        boolean ativo
+        timestamp ultimo_acesso_em
+    }
+    MOTOBOY {
+        uuid id PK
+        uuid usuario_id FK
+        uuid estabelecimento_id FK
+        varchar cpf_criptografado UK
+        varchar telefone
+        varchar placa_veiculo
+        varchar status_cadastro
+        varchar status_disponibilidade
+        decimal ultima_latitude
+        decimal ultima_longitude
+        timestamp ultima_posicao_em
+    }
+    POSICAO_GPS {
+        bigint id PK
+        uuid motoboy_id FK
+        decimal latitude
+        decimal longitude
+        smallint precisao_metros
+        timestamp registrado_em
+    }
+    CONFIGURACAO_INTEGRACAO {
+        uuid id PK
+        uuid estabelecimento_id FK
+        varchar provedor
+        varchar merchant_id
+        varchar client_id
+        varchar client_secret_criptografado
+        varchar access_token
+        timestamp token_expira_em
+        boolean ativo
+        timestamp ultimo_polling_em
+    }
+    PEDIDO_EXTERNO {
+        uuid id PK
+        uuid estabelecimento_id FK
+        varchar provedor
+        varchar id_externo
+        varchar numero_exibicao
+        varchar status_externo
+        varchar nome_cliente
+        varchar telefone_cliente
+        decimal valor_itens
+        decimal valor_taxa_entrega
+        decimal valor_total
+        varchar forma_pagamento
+        boolean pago_online
+        decimal troco_para
+        text observacoes
+        jsonb payload_json
+        timestamp recebido_em
+        timestamp processado_em
+    }
+    PEDIDO_EXTERNO_ITEM {
+        uuid id PK
+        uuid pedido_externo_id FK
+        varchar nome_item
+        int quantidade
+        decimal valor_unitario
+        text observacao
+    }
+    ENTREGA {
+        uuid id PK
+        uuid estabelecimento_id FK
+        uuid pedido_externo_id FK
+        uuid lote_id FK
+        uuid faixa_preco_id FK
+        uuid recibo_id FK
+        varchar endereco_completo
+        varchar bairro
+        varchar cep
+        varchar complemento
+        varchar ponto_referencia
+        decimal latitude
+        decimal longitude
+        decimal distancia_km
+        decimal valor_repasse
+        varchar status
+        varchar motivo_falha
+        timestamp criada_em
+        timestamp despachada_em
+        timestamp saiu_para_entrega_em
+        timestamp finalizada_em
+    }
+    ENTREGA_STATUS_HISTORICO {
+        bigint id PK
+        uuid entrega_id FK
+        varchar status_anterior
+        varchar status_novo
+        uuid registrado_por_usuario_id
+        decimal latitude
+        decimal longitude
+        timestamp registrado_em
+    }
+    LOTE_ENTREGA {
+        uuid id PK
+        uuid estabelecimento_id FK
+        uuid motoboy_id FK
+        uuid usuario_despachante_id FK
+        varchar status
+        int qtd_entregas
+        decimal valor_total_repasse
+        timestamp criado_em
+        timestamp despachado_em
+        timestamp concluido_em
+    }
+    DISTANCIA_PRECO {
+        uuid id PK
+        uuid estabelecimento_id FK
+        decimal de_km
+        decimal ate_km
+        decimal valor_pago
+        boolean ativo
+        date vigente_desde
+    }
+    RECIBO {
+        uuid id PK
+        uuid estabelecimento_id FK
+        uuid motoboy_id FK
+        uuid usuario_gerador_id FK
+        date data_referencia
+        timestamp periodo_inicio
+        timestamp periodo_fim
+        int qtd_entregas
+        decimal valor_total
+        varchar status
+        timestamp gerado_em
+        timestamp pago_em
+    }

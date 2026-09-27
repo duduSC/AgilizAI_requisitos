@@ -11,6 +11,7 @@ O propósito deste documento é fornecer uma visão clara, executiva e de alto n
 O **Agiliza Delivery** é uma plataforma que atua como o sistema nervoso central da logística de entregas de frota própria.
 **O sistema irá:**
 *   Prover um "Painel de Controle Visual" (Mapa) para agrupamento e despacho de entregas.
+*   Importar pedidos automaticamente via integrações oficiais com plataformas de terceiros (como iFood), eliminando a digitação manual.
 *   Integrar os operadores de caixa aos motoboys em campo por meio de um aplicativo móvel impositivo (o motoboy não pode recusar a entrega atribuída).
 *   Monitorar a posição da frota em tempo real (intervalos de 20s).
 *   Automatizar o fechamento de caixa, calculando o valor de repasse ao entregador utilizando como base a quilometragem da *primeira rota ideal* fornecida por uma API de Mapas externa, e não a rota física efetivamente traçada.
@@ -31,7 +32,7 @@ O **Agiliza Delivery** é uma plataforma que atua como o sistema nervoso central
 | **O problema da** | gestão invisível da frota e do acerto financeiro manual e empírico de quilometragem |
 | **Afeta** | donos de restaurantes com frota própria e operadores de caixa/expedição |
 | **Cujo impacto é** | entregas ociosas na estufa por falha no agrupamento de destinos próximos, desconfiança e atritos no cálculo do pagamento do entregador, e impossibilidade de contato rápido durante incidentes em rota. |
-| **Uma solução adequada seria** | um ecossistema descentralizado onde o operador agrupa visualmente as entregas em um mapa e as despacha diretamente para o smartphone do entregador, com cálculo de valores garantidos por APIs de mapas neutras, além de chat integrado para suporte instantâneo. |
+| **Uma solução adequada seria** | um ecossistema descentralizado onde o operador agrupa visualmente as entregas em um mapa (importadas automaticamente de plataformas como iFood) e as despacha diretamente para o smartphone do entregador, com cálculo de valores garantidos por APIs de mapas neutras, além de chat integrado para suporte instantâneo. |
 
 ### 2.2 Declaração de posição do produto
 *   **Para** operações de food service com frotas de motoboys próprias
@@ -58,6 +59,7 @@ O **Agiliza Delivery** é uma plataforma que atua como o sistema nervoso central
 
 *   **Infraestrutura de Nuvem:** Espera-se que a camada Backend possua conectividade ininterrupta e consiga gerenciar chamadas massivas concorrentes (WebSockets para Chat e Polling de GPS).
 *   **Dependência de APIs de Terceiros:** A "Verdade Financeira" do sistema depende da robustez da API de Geocodificação/Rotas (Google Maps, OpenStreetMap ou similar) para retornar a distância ideal da viagem sem interrupções.
+*   **Integração com Marketplaces:** O fluxo automatizado de entrada de pedidos depende da estabilidade e disponibilidade da API de terceiros (ex: iFood), exigindo rotinas resilientes no backend (polling) para não perder eventos em caso de oscilação.
 *   **Hardware (Motoboys):** Assume-se que os motoboys estarão utilizando dispositivos móveis Android/iOS com GPS ativado e pacote de dados com cobertura satisfatória ao longo da jornada.
 
 ---

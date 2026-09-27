@@ -12,8 +12,8 @@ O modelo tradicional de despacho de motoboys em restaurantes depende de roteiriz
 
 ### 1.2 A Nova Solução
 A plataforma "Agiliza Delivery" soluciona esse problema dividindo a operação em três frentes altamente integradas:
-1.  **Backoffice (Backend Core):** Responsável pelas regras de negócio, tabelas de precificação, cálculo automático da primeira rota viável via API de mapas e consolidação financeira.
-2.  **Frontend (Web BFF - Para Operadores):** Uma interface em tela cheia com mapa interativo onde o operador seleciona entregas visualmente, agrupa-as e as despacha.
+1.  **Backoffice (Backend Core):** Responsável por importar pedidos via integração oficial (iFood), processar regras de negócio, precificação, cálculo da rota ideal e consolidação financeira.
+2.  **Frontend (Web BFF - Para Operadores):** Uma interface em tela cheia com mapa interativo onde o operador visualiza pedidos (que caem automaticamente), os agrupa e despacha.
 3.  **App Mobile (Flutter - Para Motoboys):** App de uso compulsório (para a frota própria) que recebe rotas, atualiza a localização (tracking a cada ~20s) e permite interação via Chat Interno e botões de status rápido (Entregue / Falhou).
 
 ---
@@ -44,6 +44,9 @@ A plataforma "Agiliza Delivery" soluciona esse problema dividindo a operação e
 | RF-08 | O Motoboy deve poder mudar o status do pedido para "Entregue" ou "Falha (Não Atendeu)". |
 | RF-09 | O sistema deve possuir um Módulo de Chat bidirecional entre Operador e Motoboy. |
 | RF-10 | O sistema deve processar o fechamento financeiro, gerando o relatório final do motoboy no fim do turno e zerando seu saldo pendente. |
+| RF-11 | O sistema deve possuir um módulo (Worker) para fazer polling (a cada 30s) na API do iFood em busca de novos eventos de pedidos. |
+| RF-12 | O sistema deve permitir que o gestor do restaurante autorize a integração com a sua conta iFood através de protocolo OAuth2. |
+| RF-13 | O sistema deve extrair de forma automatizada o endereço, valor e coordenadas (lat/lng) do payload do iFood e transformá-los em entregas pendentes no mapa, sem intervenção manual. |
 
 ### 3.2 Requisitos Não Funcionais (RNF)
 | ID | Descrição | Categoria |
@@ -73,6 +76,16 @@ A plataforma "Agiliza Delivery" soluciona esse problema dividindo a operação e
     *   `Dado que` uma entrega foi finalizada
     *   `Quando` o sistema for consolidar o valor
     *   `Então` o sistema ignora o trajeto real do GPS do motoboy e utiliza a quilometragem consultada inicialmente na API de Mapas para garantir que ele ganhe pela rota ótima, não penalizando a empresa por desvios pessoais.
+
+### Épico 4: Integração e Automação de Pedidos (Inbound)
+*   **US-4.1: Autenticação de Loja (OAuth2)**
+    *   `Dado que` o gestor quer evitar digitar endereços manualmente
+    *   `Quando` ele clicar em "Conectar com iFood" no painel
+    *   `Então` o sistema deve redirecioná-lo para a tela do iFood para autorizar a leitura de pedidos.
+*   **US-4.2: Entrada Automática no Mapa**
+    *   `Dado que` o restaurante tem a integração ativa
+    *   `Quando` um cliente fizer um pedido no iFood e ele for aceito pela loja
+    *   `Então` o pino daquela entrega deve surgir no mapa do Operador com as coordenadas e endereço exatos de forma automática.
 
 ---
 
