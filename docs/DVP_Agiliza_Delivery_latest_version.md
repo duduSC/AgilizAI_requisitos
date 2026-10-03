@@ -244,6 +244,8 @@ O diagrama apresentado abaixo contempla todos os casos de uso definidos para a s
 
 ![Diagrama de Casos de Uso do Agiliza Delivery](img/uc-casos-de-uso.png)
 
+*Código-fonte do diagrama: PlantUML, arquivo `docs/img/uc-casos-de-uso.puml`.*
+
 | Caso de uso | Ator principal | Atores secundários |
 | ----- | ----- | ----- |
 | UC01 – Gerenciar Fluxo de Entregas | Operador de Logística | Sistema Externo (iFood) |

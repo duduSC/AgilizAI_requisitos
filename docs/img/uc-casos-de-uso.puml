@@ -1,0 +1,60 @@
+@startuml uc-casos-de-uso
+!pragma layout smetana
+left to right direction
+
+skinparam defaultFontName Arial
+skinparam defaultFontSize 14
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam ArrowColor #555555
+skinparam ArrowThickness 0.6
+
+skinparam actor {
+  BorderColor #333333
+  BackgroundColor white
+  FontSize 14
+}
+skinparam usecase {
+  BackgroundColor #FFFFCC
+  BorderColor #8C8C3A
+  FontSize 14
+}
+skinparam rectangle {
+  BorderColor #666666
+  BorderThickness 1.5
+  FontStyle bold
+  FontSize 16
+}
+
+actor "Administrador Geral" as AG
+actor "Administrador do Restaurante" as AR
+actor "Operador de Logística" as OP
+actor "Sistema Externo (iFood)" as EXT
+actor "Entregador" as ENT
+
+rectangle "Agiliza Delivery" {
+  usecase "UC06 - Gerenciar\nRestaurantes" as UC06
+  usecase "UC05 - Configurar\nEstabelecimento e Frota" as UC05
+  usecase "UC03 - Fechar Acerto\nFinanceiro" as UC03
+  usecase "UC04 - Monitorar Logística\nem Tempo Real" as UC04
+  usecase "UC01 - Gerenciar Fluxo\nde Entregas" as UC01
+  usecase "UC02 - Executar Lote\nde Entrega" as UC02
+  usecase "UC07 - Autenticar-se" as UC07
+}
+
+AG -- UC06
+AR -- UC05
+AR -- UC03
+OP -- UC03
+OP -- UC04
+OP -- UC01
+EXT -- UC01
+ENT -- UC02
+
+UC06 ..> UC07 : <<include>>
+UC05 ..> UC07 : <<include>>
+UC03 ..> UC07 : <<include>>
+UC04 ..> UC07 : <<include>>
+UC01 ..> UC07 : <<include>>
+UC02 ..> UC07 : <<include>>
+@enduml
