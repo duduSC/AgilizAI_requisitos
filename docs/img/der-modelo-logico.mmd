@@ -40,6 +40,7 @@ erDiagram
         varchar status
         smallint max_pedidos_por_lote
         timestamp criado_em
+        timestamp atualizado_em
     }
     USUARIO {
         uuid id PK
@@ -50,10 +51,13 @@ erDiagram
         varchar perfil
         boolean ativo
         timestamp ultimo_acesso_em
+        timestamp criado_em
+        timestamp atualizado_em
     }
     MOTOBOY {
         uuid id PK
         uuid usuario_id FK, UK
+        varchar nome
         varchar cpf_criptografado
         varchar cpf_hash UK
         varchar telefone
@@ -65,6 +69,8 @@ erDiagram
         timestamp ultima_posicao_em
         timestamp consentimento_lgpd_em
         varchar consentimento_lgpd_versao
+        timestamp criado_em
+        timestamp atualizado_em
     }
     CONFIGURACAO_INTEGRACAO {
         uuid id PK
@@ -73,6 +79,8 @@ erDiagram
         varchar merchant_id
         boolean ativo
         timestamp ultimo_polling_em
+        timestamp criado_em
+        timestamp atualizado_em
     }
     FALHA_INTEGRACAO {
         bigint id PK
@@ -103,8 +111,8 @@ erDiagram
         decimal troco_para
         text observacoes
         jsonb payload_json
-        timestamp recebido_em
         timestamp processado_em
+        timestamp criado_em
         timestamp atualizado_em
     }
     ITEM_PEDIDO {
@@ -142,10 +150,10 @@ erDiagram
         varchar motivo_falha
         boolean pendente_revisao
         varchar motivo_revisao
-        timestamp criada_em
         timestamp despachada_em
         timestamp saiu_para_entrega_em
         timestamp finalizada_em
+        timestamp criado_em
         timestamp atualizado_em
     }
     ENTREGA_STATUS_HISTORICO {
@@ -188,6 +196,8 @@ erDiagram
         decimal valor_pago
         boolean ativo
         date vigente_desde
+        timestamp criado_em
+        timestamp atualizado_em
     }
     RECIBO {
         uuid id PK
@@ -200,7 +210,7 @@ erDiagram
         smallint qtd_entregas
         decimal valor_total
         varchar status
-        timestamp gerado_em
         timestamp pago_em
+        timestamp criado_em
         timestamp atualizado_em
     }

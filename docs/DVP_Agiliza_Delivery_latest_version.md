@@ -16,6 +16,7 @@ Eduardo dos Santos de Camargo
 | 2.1 | Revisão técnica: stack padronizada em Spring Boot; inclusão de escopo, premissas, restrições, riscos e glossário; descrição dos casos de uso; matriz de rastreabilidade; máquina de estados; definição da regra de precificação; reformulação do modelo lógico do banco de dados | Eduardo S.C | 16/09/2026 |
 | 2.2 | Revisão de consistência: prazo ajustado para 17/11/2026; telemetria restrita à última posição; regra de congelamento e ajuste manual do repasse; repasse de entregas canceladas; sincronização do diagrama ER com o dicionário de dados; inclusão de ITEM_PEDIDO, ENTREGA_AJUSTE_VALOR e FALHA_INTEGRACAO; dados do cliente na ENTREGA (entregas avulsas); marcação de revisão; consentimento LGPD; índice cego para unicidade do CPF | Eduardo S.C | 02/10/2026 |
 | 2.3 | Distância de rota via Google Maps (substitui Haversine); credenciais do provedor no nível da aplicação; remoção do estado CRIADO do lote; fluxos de devolução de lote, pagamento e cancelamento de recibo; cancelamento durante EM_ROTA; UC07 – Autenticar-se e HU13; HU10 rastreada ao RF03; ajustes do cronograma (endpoint de teste e protótipo de GPS na Entrega 5) | Eduardo S.C | 02/10/2026 |
+| 2.4 | Ajustes decorrentes da implementação da camada de persistência: `nome` retorna ao MOTOBOY, que deixa de ter FK própria para ESTABELECIMENTO; padronização das datas de controle (`criado_em` e `atualizado_em`) em todas as entidades com PK UUID; campos de domínio fechado passam de VARCHAR com CHECK para tipo ENUM; inclusão das convenções gerais no dicionário de dados | Eduardo S.C | 02/10/2026 |
 
 ---
 
@@ -522,6 +523,8 @@ O modelo abaixo substitui a versão 2.0 e incorpora as seguintes mudanças estru
 
 A **ENTREGA** guarda uma cópia operacional dos dados do cliente e do pagamento, de modo a ser autossuficiente tanto para pedidos importados (copiados de PEDIDO_EXTERNO) quanto para entregas avulsas (digitadas pelo operador). PEDIDO_EXTERNO permanece como registro fiel e imutável da origem (RNF13).
 
+O **MOTOBOY** não possui vínculo direto com o estabelecimento: ele é alcançado pelo USUARIO associado, que já carrega essa referência. Assim, a credencial e a lotação do entregador ficam em um único lugar.
+
 ![Modelo Lógico do Banco de Dados](img/der-modelo-logico.png)
 
 <details>
@@ -570,6 +573,7 @@ erDiagram
         varchar status
         smallint max_pedidos_por_lote
         timestamp criado_em
+        timestamp atualizado_em
     }
     USUARIO {
         uuid id PK
@@ -580,10 +584,13 @@ erDiagram
         varchar perfil
         boolean ativo
         timestamp ultimo_acesso_em
+        timestamp criado_em
+        timestamp atualizado_em
     }
     MOTOBOY {
         uuid id PK
         uuid usuario_id FK, UK
+        varchar nome
         varchar cpf_criptografado
         varchar cpf_hash UK
         varchar telefone
@@ -595,6 +602,8 @@ erDiagram
         timestamp ultima_posicao_em
         timestamp consentimento_lgpd_em
         varchar consentimento_lgpd_versao
+        timestamp criado_em
+        timestamp atualizado_em
     }
     CONFIGURACAO_INTEGRACAO {
         uuid id PK
@@ -603,6 +612,8 @@ erDiagram
         varchar merchant_id
         boolean ativo
         timestamp ultimo_polling_em
+        timestamp criado_em
+        timestamp atualizado_em
     }
     FALHA_INTEGRACAO {
         bigint id PK
@@ -633,8 +644,8 @@ erDiagram
         decimal troco_para
         text observacoes
         jsonb payload_json
-        timestamp recebido_em
         timestamp processado_em
+        timestamp criado_em
         timestamp atualizado_em
     }
     ITEM_PEDIDO {
@@ -672,10 +683,10 @@ erDiagram
         varchar motivo_falha
         boolean pendente_revisao
         varchar motivo_revisao
-        timestamp criada_em
         timestamp despachada_em
         timestamp saiu_para_entrega_em
         timestamp finalizada_em
+        timestamp criado_em
         timestamp atualizado_em
     }
     ENTREGA_STATUS_HISTORICO {
@@ -718,6 +729,8 @@ erDiagram
         decimal valor_pago
         boolean ativo
         date vigente_desde
+        timestamp criado_em
+        timestamp atualizado_em
     }
     RECIBO {
         uuid id PK
@@ -730,8 +743,8 @@ erDiagram
         smallint qtd_entregas
         decimal valor_total
         varchar status
-        timestamp gerado_em
         timestamp pago_em
+        timestamp criado_em
         timestamp atualizado_em
     }
 ```
@@ -739,6 +752,13 @@ erDiagram
 </details>
 
 ### 1.5.4. Dicionário de Dados
+
+**Convenções aplicadas a todas as tabelas**
+
+- **Datas de controle.** Toda entidade de negócio com chave primária UUID possui o par `criado_em` (NOT NULL, imutável) e `atualizado_em`, preenchidos automaticamente pela camada de persistência. Eles não se confundem com as datas de negócio — `despachada_em`, `finalizada_em`, `pago_em`, `ultima_posicao_em`, `vigente_desde` —, que continuam com nome próprio e são gravadas pela regra de negócio.
+- **Tabelas de registro.** `ITEM_PEDIDO`, `ENTREGA_STATUS_HISTORICO`, `ENTREGA_AJUSTE_VALOR` e `FALHA_INTEGRACAO` são *append-only*: usam chave `BIGSERIAL`, não sofrem atualização e por isso carregam apenas o seu próprio carimbo de tempo, sem o par acima.
+- **Campos de domínio fechado.** Onde a coluna aparece como `ENUM (...)`, o tipo é um enumerado nativo do PostgreSQL, e não `VARCHAR` com `CHECK`. A validação passa a ser do próprio tipo da coluna, e os mesmos valores são declarados como enumerações na aplicação. Acrescentar um valor novo exige `ALTER TYPE ... ADD VALUE` na migração.
+- **Coordenadas.** Os pares latitude/longitude usam `DECIMAL(10,7)` e são tratados na aplicação como um único tipo-valor, embora permaneçam como duas colunas na tabela.
 
 **ESTABELECIMENTO** — restaurante parceiro. Raiz da multilocação.
 
@@ -751,9 +771,9 @@ erDiagram
 | telefone | VARCHAR(15) | | Contato da loja |
 | endereco_completo | VARCHAR(255) | NOT NULL | Endereço da loja |
 | latitude, longitude | DECIMAL(10,7) | NOT NULL | Origem de todos os cálculos de distância |
-| status | VARCHAR(10) | NOT NULL, CHECK IN (ATIVO, INATIVO) | Controla o login de toda a loja (HU12) |
+| status | ENUM (ATIVO, INATIVO) | NOT NULL | Controla o login de toda a loja (HU12) |
 | max_pedidos_por_lote | SMALLINT | NOT NULL, DEFAULT 5 | Limite parametrizável da HU02 |
-| criado_em | TIMESTAMP | NOT NULL | Data do cadastro |
+| criado_em, atualizado_em | TIMESTAMP | NOT NULL / NULL | Datas de controle padrão (ver nota ao final da seção) |
 
 **USUARIO** — credencial de acesso de qualquer perfil.
 
@@ -764,28 +784,31 @@ erDiagram
 | nome | VARCHAR(120) | NOT NULL | Nome do usuário |
 | login_email | VARCHAR(150) | NOT NULL, UNIQUE | Login |
 | senha_hash | VARCHAR(60) | NOT NULL | Hash BCrypt (RNF02) |
-| perfil | VARCHAR(20) | NOT NULL, CHECK IN (ADMIN_GERAL, ADMIN_RESTAURANTE, OPERADOR, ENTREGADOR) | Base da autorização |
+| perfil | ENUM (ADMIN_GERAL, ADMIN_RESTAURANTE, OPERADOR, ENTREGADOR) | NOT NULL | Base da autorização |
 | ativo | BOOLEAN | NOT NULL, DEFAULT true | Desativação individual |
 | ultimo_acesso_em | TIMESTAMP | | Auditoria |
+| criado_em, atualizado_em | TIMESTAMP | NOT NULL / NULL | Datas de controle padrão |
 
 **MOTOBOY** — dados operacionais do entregador; a credencial fica em USUARIO.
 
 | Coluna | Tipo | Restrições | Descrição |
 | ----- | ----- | ----- | ----- |
 | id | UUID | PK | Identificador |
-| usuario_id | UUID | FK, NOT NULL, UNIQUE | Vínculo que permite o login no aplicativo (HU09) |
+| usuario_id | UUID | FK, NOT NULL, UNIQUE | Vínculo que permite o login no aplicativo (HU09). O estabelecimento do entregador é alcançado por este vínculo |
+| nome | VARCHAR(120) | NOT NULL | Nome do entregador, exibido no painel de despacho e no mapa |
 | cpf_criptografado | VARCHAR(255) | NOT NULL | CPF cifrado em repouso com AES-GCM (IV aleatório), recuperável apenas pela aplicação (RNF02, RNF07) |
 | cpf_hash | VARCHAR(64) | NOT NULL, UNIQUE | Índice cego: HMAC-SHA256 do CPF com chave secreta. Garante a unicidade (UC05 E2), já que o valor cifrado muda a cada gravação e não pode ser comparado |
 | telefone | VARCHAR(15) | NOT NULL | Contato |
 | placa_veiculo | VARCHAR(8) | | Identificação do veículo |
-| status_cadastro | VARCHAR(10) | NOT NULL, CHECK IN (ATIVO, BLOQUEADO) | Bloqueio impede receber lotes |
-| status_disponibilidade | VARCHAR(10) | NOT NULL, CHECK IN (OFFLINE, ONLINE, EM_ROTA) | Apenas ONLINE recebe despacho |
+| status_cadastro | ENUM (ATIVO, BLOQUEADO) | NOT NULL | Bloqueio impede receber lotes |
+| status_disponibilidade | ENUM (OFFLINE, ONLINE, EM_ROTA) | NOT NULL | Apenas ONLINE recebe despacho |
 | ultima_latitude, ultima_longitude | DECIMAL(10,7) | | Última posição, para carga inicial do mapa |
 | ultima_posicao_em | TIMESTAMP | | Base do alerta de entregador sem transmitir |
 | consentimento_lgpd_em | TIMESTAMP | | Momento do aceite do termo no primeiro acesso ao aplicativo; nulo impede ficar ONLINE (RNF07) |
 | consentimento_lgpd_versao | VARCHAR(10) | | Versão do termo aceito; nova versão exige novo aceite |
+| criado_em, atualizado_em | TIMESTAMP | NOT NULL / NULL | Datas de controle padrão |
 
-> O nome do entregador é mantido apenas em USUARIO.nome, evitando duplicidade.
+> MOTOBOY não possui FK direta para ESTABELECIMENTO: o vínculo com a loja é o do USUARIO associado.
 
 
 **CONFIGURACAO_INTEGRACAO** — vínculo de cada estabelecimento com sua loja no provedor.
@@ -794,10 +817,11 @@ erDiagram
 | ----- | ----- | ----- | ----- |
 | id | UUID | PK | Identificador |
 | estabelecimento_id | UUID | FK, NOT NULL, UNIQUE (com provedor) | Loja. Relação 1:N opcional: a loja pode não ter integração (apenas entregas avulsas) ou ter uma por provedor |
-| provedor | VARCHAR(20) | NOT NULL, CHECK IN (IFOOD, SIMULADOR) | Provedor configurado |
+| provedor | ENUM (IFOOD, SIMULADOR) | NOT NULL | Provedor configurado |
 | merchant_id | VARCHAR(100) | NOT NULL, UNIQUE (com provedor) | Identificador da loja no provedor; uma loja do provedor só pode estar vinculada a um estabelecimento |
 | ativo | BOOLEAN | NOT NULL | Liga/desliga o *polling* da loja |
 | ultimo_polling_em | TIMESTAMP | | Diagnóstico da integração |
+| criado_em, atualizado_em | TIMESTAMP | NOT NULL / NULL | Datas de controle padrão |
 
 > **Credenciais do provedor:** no modelo de integração centralizada, o Agiliza Delivery é **uma única aplicação** cadastrada no Portal do Desenvolvedor do provedor, e cada restaurante autoriza essa aplicação a acessar a sua loja. Por isso, `client_id` e `client_secret` pertencem à aplicação, e não ao estabelecimento: ficam na configuração do servidor (variáveis de ambiente / cofre de segredos), nunca no banco. O *access token* é obtido com essas credenciais, mantido em memória e renovado antes de expirar; uma única consulta de eventos atende todas as lojas vinculadas, filtrando por `merchant_id`. *A confirmar na documentação vigente do Portal do Desenvolvedor iFood durante a Entrega 3.*
 
@@ -808,11 +832,11 @@ erDiagram
 | id | BIGSERIAL | PK | Identificador |
 | configuracao_integracao_id | UUID | FK, NOT NULL | Integração (e, por ela, a loja) em que a falha ocorreu |
 | id_externo | VARCHAR(100) | | Pedido afetado, quando identificável |
-| etapa | VARCHAR(20) | NOT NULL, CHECK IN (AUTENTICACAO, CONSULTA, CONFIRMACAO, GEOCODIFICACAO, PERSISTENCIA) | Passo do ciclo do *worker* que falhou (seção 1.5.6) |
+| etapa | ENUM (AUTENTICACAO, CONSULTA, CONFIRMACAO, GEOCODIFICACAO, PERSISTENCIA) | NOT NULL | Passo do ciclo do *worker* que falhou (seção 1.5.6) |
 | mensagem_erro | TEXT | NOT NULL | Erro técnico retornado |
 | tentativas | SMALLINT | NOT NULL | Número de tentativas realizadas (máximo 5, RNF04) |
 | payload_json | JSONB | | Resposta recebida, quando houver, para reprocessamento |
-| status | VARCHAR(12) | NOT NULL, CHECK IN (PENDENTE, REPROCESSADA, DESCARTADA) | PENDENTE alimenta o alerta de integração degradada no painel |
+| status | ENUM (PENDENTE, REPROCESSADA, DESCARTADA) | NOT NULL | PENDENTE alimenta o alerta de integração degradada no painel |
 | ocorrido_em | TIMESTAMP | NOT NULL | Momento da última tentativa |
 | resolvido_em | TIMESTAMP | | Momento do reprocessamento ou descarte |
 
@@ -832,14 +856,13 @@ erDiagram
 | valor_itens | DECIMAL(10,2) | | Subtotal dos itens |
 | valor_taxa_entrega | DECIMAL(10,2) | | Taxa cobrada do cliente — não confundir com o repasse ao entregador |
 | valor_total | DECIMAL(10,2) | NOT NULL | Total do pedido |
-| forma_pagamento | VARCHAR(30) | | DINHEIRO, CREDITO, DEBITO, PIX, VALE |
+| forma_pagamento | ENUM (DINHEIRO, CREDITO, DEBITO, PIX, VALE) | | Forma de pagamento do pedido |
 | pago_online | BOOLEAN | NOT NULL | Informa ao entregador se há valor a receber na porta |
 | troco_para | DECIMAL(10,2) | | Valor para o qual o cliente pediu troco |
 | observacoes | TEXT | | Observações do cliente |
 | payload_json | JSONB | NOT NULL | Resposta original da API, para auditoria e reprocessamento (RNF13) |
-| recebido_em | TIMESTAMP | NOT NULL | Momento da captura |
 | processado_em | TIMESTAMP | | Momento em que a ENTREGA correspondente foi criada |
-| atualizado_em | TIMESTAMP | | Última atualização do registro |
+| criado_em, atualizado_em | TIMESTAMP | NOT NULL / NULL | Datas de controle padrão. Aqui `criado_em` é o momento da captura pelo *worker* |
 
 **ITEM_PEDIDO** — itens do pedido importado, para conferência da sacola (UC02).
 
@@ -870,18 +893,18 @@ erDiagram
 | bairro, cep, complemento, ponto_referencia | VARCHAR | | Apoio ao entregador em campo |
 | latitude, longitude | DECIMAL(10,7) | | Coordenada efetivamente usada, já com eventual ajuste manual do operador (R04). Nula apenas enquanto `pendente_revisao` = true por falha de geocodificação |
 | valor_pedido | DECIMAL(10,2) | | Total do pedido |
-| forma_pagamento | VARCHAR(30) | | DINHEIRO, CREDITO, DEBITO, PIX, VALE |
+| forma_pagamento | ENUM (DINHEIRO, CREDITO, DEBITO, PIX, VALE) | | Forma de pagamento do pedido |
 | pago_online | BOOLEAN | NOT NULL, DEFAULT false | Indica se há valor a receber na porta |
 | troco_para | DECIMAL(10,2) | | Valor para o qual o cliente pediu troco |
 | observacoes | TEXT | | Observações do cliente ou do operador |
 | distancia_km | DECIMAL(6,2) | | Distância de rota loja → cliente, obtida pela API de rotas; base da faixa |
 | valor_repasse | DECIMAL(10,2) | | Valor devido ao entregador por esta entrega; provisório até o estado final (seção 1.5.5) |
-| status | VARCHAR(25) | NOT NULL | Conforme a máquina de estados da seção 1.4.4 |
+| status | ENUM (AGUARDANDO_DESPACHO, DESPACHADA, EM_ROTA, ENTREGUE, FALHA, CANCELADA) | NOT NULL | Conforme a máquina de estados da seção 1.4.4 |
 | motivo_falha | VARCHAR(100) | | Obrigatório quando status = FALHA |
 | pendente_revisao | BOOLEAN | NOT NULL, DEFAULT false | Entrega sem coordenada válida (UC01 A1), sem distância calculada ou sem faixa correspondente (seção 1.5.5, passos 1 e 3). Bloqueia a inclusão em recibo |
-| motivo_revisao | VARCHAR(30) | CHECK IN (SEM_COORDENADA, SEM_DISTANCIA, SEM_FAIXA) | Causa da revisão pendente |
-| criada_em, despachada_em, saiu_para_entrega_em, finalizada_em | TIMESTAMP | | Tempos operacionais exigidos pelo RF01 |
-| atualizado_em | TIMESTAMP | | Última atualização do registro |
+| motivo_revisao | ENUM (SEM_COORDENADA, SEM_DISTANCIA, SEM_FAIXA) | | Causa da revisão pendente |
+| despachada_em, saiu_para_entrega_em, finalizada_em | TIMESTAMP | | Tempos operacionais exigidos pelo RF01 |
+| criado_em, atualizado_em | TIMESTAMP | NOT NULL / NULL | Datas de controle padrão (ver nota ao final da seção) |
 
 **ENTREGA_STATUS_HISTORICO** — trilha de auditoria de cada transição.
 
@@ -889,8 +912,8 @@ erDiagram
 | ----- | ----- | ----- | ----- |
 | id | BIGSERIAL | PK | Identificador |
 | entrega_id | UUID | FK, NOT NULL | Entrega |
-| status_anterior | VARCHAR(25) | | Estado de origem |
-| status_novo | VARCHAR(25) | NOT NULL | Estado de destino |
+| status_anterior | ENUM (ver ENTREGA.status) | | Estado de origem; nulo na criação da entrega |
+| status_novo | ENUM (ver ENTREGA.status) | NOT NULL | Estado de destino |
 | registrado_por_usuario_id | UUID | FK | Autor da transição |
 | latitude, longitude | DECIMAL(10,7) | | Onde o entregador estava ao registrar |
 | registrado_em | TIMESTAMP | NOT NULL | Horário do evento na origem |
@@ -915,11 +938,11 @@ erDiagram
 | estabelecimento_id | UUID | FK, NOT NULL | Isolamento |
 | motoboy_id | UUID | FK, NOT NULL | Executor |
 | usuario_despachante_id | UUID | FK, NOT NULL | Operador que despachou |
-| status | VARCHAR(15) | NOT NULL | Conforme a seção 1.4.4 |
+| status | ENUM (DESPACHADO, EM_ROTA, CONCLUIDO, CANCELADO) | NOT NULL | Conforme a seção 1.4.4 |
 | qtd_entregas | SMALLINT | NOT NULL, CHECK > 0 | O limite `≤ ESTABELECIMENTO.max_pedidos_por_lote` (HU02) é validado na camada de serviço e reforçado por *trigger*, pois um CHECK não pode consultar outra tabela |
 | valor_total_repasse | DECIMAL(10,2) | | Soma do valor_repasse das entregas |
-| criado_em, despachado_em, concluido_em | TIMESTAMP | | Tempos do lote |
-| atualizado_em | TIMESTAMP | | Última atualização do registro |
+| despachado_em, concluido_em | TIMESTAMP | | Tempos do lote |
+| criado_em, atualizado_em | TIMESTAMP | NOT NULL / NULL | Datas de controle padrão |
 
 **DISTANCIA_PRECO** — faixas de preço por distância, próprias de cada loja.
 
@@ -932,6 +955,7 @@ erDiagram
 | valor_pago | DECIMAL(10,2) | NOT NULL, CHECK > 0 | Repasse da faixa |
 | ativo | BOOLEAN | NOT NULL | Faixas substituídas são inativadas, nunca excluídas |
 | vigente_desde | DATE | NOT NULL | Preserva o histórico para auditoria de recibos antigos |
+| criado_em, atualizado_em | TIMESTAMP | NOT NULL / NULL | Datas de controle padrão |
 
 > **Regras de integridade:** (1) **sem sobreposição** — para um mesmo `estabelecimento_id` com `ativo = true`, não pode haver interseção entre os intervalos `[de_km, ate_km)`; no PostgreSQL, isso é garantido por uma constraint `EXCLUDE USING gist` sobre o intervalo numérico (UC05, exceção E1). (2) **sem lacunas** — as faixas ativas devem começar em 0 km e ser contíguas (o `ate_km` de uma é o `de_km` da seguinte). Essa regra não é expressável por constraint e é validada na camada de serviço, que grava a tabela inteira de uma loja em uma única transação.
 
@@ -947,10 +971,9 @@ erDiagram
 | periodo_inicio, periodo_fim | TIMESTAMP | NOT NULL | Janela consolidada |
 | qtd_entregas | SMALLINT | NOT NULL | Total de entregas incluídas |
 | valor_total | DECIMAL(10,2) | NOT NULL | Soma dos repasses |
-| status | VARCHAR(10) | NOT NULL, CHECK IN (GERADO, PAGO, CANCELADO) | Conforme a seção 1.4.4 |
-| gerado_em | TIMESTAMP | NOT NULL | Emissão |
-| pago_em | TIMESTAMP | | Confirmação do PIX pelo operador |
-| atualizado_em | TIMESTAMP | | Última atualização do registro |
+| status | ENUM (GERADO, PAGO, CANCELADO) | NOT NULL | Conforme a seção 1.4.4 |
+| pago_em | TIMESTAMP | | Confirmação do PIX pelo operador (UC03, passo 6) |
+| criado_em, atualizado_em | TIMESTAMP | NOT NULL / NULL | Datas de controle padrão. Aqui `criado_em` é a emissão do recibo, que nasce GERADO |
 
 ### 1.5.5. Regra de Precificação e Cálculo do Repasse
 
