@@ -16,7 +16,7 @@ Eduardo dos Santos de Camargo
 | 2.1 | Revisão técnica: stack padronizada em Spring Boot; inclusão de escopo, premissas, restrições, riscos e glossário; descrição dos casos de uso; matriz de rastreabilidade; máquina de estados; definição da regra de precificação; reformulação do modelo lógico do banco de dados | Eduardo S.C | 16/09/2026 |
 | 2.2 | Revisão de consistência: prazo ajustado para 17/11/2026; telemetria restrita à última posição; regra de congelamento e ajuste manual do repasse; repasse de entregas canceladas; sincronização do diagrama ER com o dicionário de dados; inclusão de ITEM_PEDIDO, ENTREGA_AJUSTE_VALOR e FALHA_INTEGRACAO; dados do cliente na ENTREGA (entregas avulsas); marcação de revisão; consentimento LGPD; índice cego para unicidade do CPF | Eduardo S.C | 02/10/2026 |
 | 2.3 | Distância de rota via Google Maps (substitui Haversine); credenciais do provedor no nível da aplicação; remoção do estado CRIADO do lote; fluxos de devolução de lote, pagamento e cancelamento de recibo; cancelamento durante EM_ROTA; UC07 – Autenticar-se e HU13; HU10 rastreada ao RF03; ajustes do cronograma (endpoint de teste e protótipo de GPS na Entrega 5) | Eduardo S.C | 02/10/2026 |
-| 2.4 | Ajustes decorrentes da implementação da camada de persistência: `nome` retorna ao MOTOBOY, que deixa de ter FK própria para ESTABELECIMENTO; padronização das datas de controle (`criado_em` e `atualizado_em`) em todas as entidades com PK UUID; campos de domínio fechado passam de VARCHAR com CHECK para tipo ENUM; inclusão das convenções gerais no dicionário de dados | Eduardo S.C | 02/10/2026 |
+| 2.4 | Ajustes decorrentes da implementação da camada de persistência: MOTOBOY deixa de ter FK própria para ESTABELECIMENTO, alcançado pelo USUARIO; padronização das datas de controle (`criado_em` e `atualizado_em`) em todas as entidades com PK UUID; campos de domínio fechado passam de VARCHAR com CHECK para tipo ENUM; inclusão das convenções gerais no dicionário de dados | Eduardo S.C | 02/10/2026 |
 
 ---
 
@@ -523,7 +523,7 @@ O modelo abaixo substitui a versão 2.0 e incorpora as seguintes mudanças estru
 
 A **ENTREGA** guarda uma cópia operacional dos dados do cliente e do pagamento, de modo a ser autossuficiente tanto para pedidos importados (copiados de PEDIDO_EXTERNO) quanto para entregas avulsas (digitadas pelo operador). PEDIDO_EXTERNO permanece como registro fiel e imutável da origem (RNF13).
 
-O **MOTOBOY** não possui vínculo direto com o estabelecimento: ele é alcançado pelo USUARIO associado, que já carrega essa referência. Assim, a credencial e a lotação do entregador ficam em um único lugar.
+O **MOTOBOY** guarda apenas o que é específico da função de entregador. Nome, credencial e vínculo com o estabelecimento vêm do USUARIO associado, obrigatório, evitando que o mesmo dado exista em dois lugares e possa divergir.
 
 ![Modelo Lógico do Banco de Dados](img/der-modelo-logico.png)
 
@@ -590,7 +590,6 @@ erDiagram
     MOTOBOY {
         uuid id PK
         uuid usuario_id FK, UK
-        varchar nome
         varchar cpf_criptografado
         varchar cpf_hash UK
         varchar telefone
@@ -795,7 +794,6 @@ erDiagram
 | ----- | ----- | ----- | ----- |
 | id | UUID | PK | Identificador |
 | usuario_id | UUID | FK, NOT NULL, UNIQUE | Vínculo que permite o login no aplicativo (HU09). O estabelecimento do entregador é alcançado por este vínculo |
-| nome | VARCHAR(120) | NOT NULL | Nome do entregador, exibido no painel de despacho e no mapa |
 | cpf_criptografado | VARCHAR(255) | NOT NULL | CPF cifrado em repouso com AES-GCM (IV aleatório), recuperável apenas pela aplicação (RNF02, RNF07) |
 | cpf_hash | VARCHAR(64) | NOT NULL, UNIQUE | Índice cego: HMAC-SHA256 do CPF com chave secreta. Garante a unicidade (UC05 E2), já que o valor cifrado muda a cada gravação e não pode ser comparado |
 | telefone | VARCHAR(15) | NOT NULL | Contato |
@@ -808,7 +806,7 @@ erDiagram
 | consentimento_lgpd_versao | VARCHAR(10) | | Versão do termo aceito; nova versão exige novo aceite |
 | criado_em, atualizado_em | TIMESTAMP | NOT NULL / NULL | Datas de controle padrão |
 
-> MOTOBOY não possui FK direta para ESTABELECIMENTO: o vínculo com a loja é o do USUARIO associado.
+> MOTOBOY não possui nome nem FK direta para ESTABELECIMENTO: ambos vêm do USUARIO associado, que é obrigatório. O nome é mantido em um único lugar, válido para todos os perfis, de modo que não haja duas respostas possíveis para o nome de uma mesma pessoa.
 
 
 **CONFIGURACAO_INTEGRACAO** — vínculo de cada estabelecimento com sua loja no provedor.
