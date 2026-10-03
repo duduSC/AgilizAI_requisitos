@@ -18,6 +18,7 @@ Eduardo dos Santos de Camargo
 | 2.3 | Distância de rota via Google Maps (substitui Haversine); credenciais do provedor no nível da aplicação; remoção do estado CRIADO do lote; fluxos de devolução de lote, pagamento e cancelamento de recibo; cancelamento durante EM_ROTA; UC07 – Autenticar-se e HU13; HU10 rastreada ao RF03; ajustes do cronograma (endpoint de teste e protótipo de GPS na Entrega 5) | Eduardo S.C | 02/10/2026 |
 | 2.4 | Ajustes decorrentes da implementação da camada de persistência: MOTOBOY deixa de ter FK própria para ESTABELECIMENTO, alcançado pelo USUARIO; padronização das datas de controle (`criado_em` e `atualizado_em`) em todas as entidades com PK UUID; campos de domínio fechado passam de VARCHAR com CHECK para tipo ENUM; inclusão das convenções gerais no dicionário de dados | Eduardo S.C | 02/10/2026 |
 | 2.5 | Revisão do modelo do entregador: MOTOBOY deixa de ter `nome`, que passa a existir apenas em USUARIO; remoção dos campos de consentimento LGPD, substituídos pela base legal de execução do contrato de trabalho (RNF07 reescrito, UC07 A1 removido) | Eduardo S.C | 03/10/2026 |
+| 2.6 | Introdução do **CAIXA**: o limite para correções passa a ser o fechamento do expediente, e não o pagamento do recibo. Recibos pagos podem ser cancelados e refeitos enquanto o caixa estiver aberto; o Administrador do Restaurante pode reabrir um caixa fechado mediante justificativa (UC03 A3) | Eduardo S.C | 03/10/2026 |
 
 ---
 
@@ -292,10 +293,10 @@ O diagrama apresentado abaixo contempla todos os casos de uso definidos para a s
 | **Ator principal** | Operador de Logística |
 | **Atores secundários** | Administrador do Restaurante |
 | **Pré-condições** | Existem entregas em estado final e ainda não incluídas em recibo. |
-| **Fluxo principal** | 1. O operador seleciona o entregador e o período. 2. O sistema lista as entregas do período com a faixa aplicada e o valor de cada uma. 3. O sistema apresenta o total devido. 4. O operador confirma o acerto. 5. O sistema gera o recibo com status GERADO, vincula as entregas a ele e as torna imutáveis. 6. Após realizar o PIX fora da plataforma, o operador marca o recibo como PAGO e o sistema registra `pago_em`. |
-| **Fluxos alternativos** | **A1 – Divergência identificada:** antes de confirmar, o operador ajusta o valor do repasse da entrega, informando obrigatoriamente o motivo; o ajuste é registrado em ENTREGA_AJUSTE_VALOR (valor anterior, valor novo, autor e horário) e o total é recalculado. Ajustes só são permitidos enquanto a entrega não estiver vinculada a recibo (seção 1.5.5). **A2 – Cancelar recibo:** enquanto o recibo estiver GERADO, o operador pode cancelá-lo informando o motivo; o recibo passa a CANCELADO e suas entregas são desvinculadas (`recibo_id` nulo), voltando a estar disponíveis para ajuste e novo acerto. Recibos PAGOS não podem ser cancelados. |
+| **Fluxo principal** | 1. O operador seleciona o entregador e o período. 2. O sistema lista as entregas do período com a faixa aplicada e o valor de cada uma. 3. O sistema apresenta o total devido. 4. O operador confirma o acerto. 5. O sistema gera o recibo com status GERADO, vincula as entregas a ele e o associa ao caixa do dia. 6. Após realizar o PIX fora da plataforma, o operador marca o recibo como PAGO e o sistema registra `pago_em`. 7. Ao final do expediente, o operador fecha o caixa; o sistema grava o total consolidado e torna imutáveis todos os recibos e entregas do período. |
+| **Fluxos alternativos** | **A1 – Divergência identificada:** antes de confirmar, o operador ajusta o valor do repasse da entrega, informando obrigatoriamente o motivo; o ajuste é registrado em ENTREGA_AJUSTE_VALOR (valor anterior, valor novo, autor e horário) e o total é recalculado. Ajustes são permitidos enquanto o caixa do dia estiver aberto, mesmo que a entrega já esteja em recibo (seção 1.5.5). **A2 – Cancelar recibo:** enquanto o caixa estiver aberto, o operador pode cancelar o recibo informando o motivo, **inclusive um recibo já PAGO**; ele passa a CANCELADO e suas entregas são desvinculadas (`recibo_id` nulo), voltando a estar disponíveis para ajuste e novo acerto. É o fechamento do caixa, e não o pagamento, que impede o cancelamento. **A3 – Reabrir caixa:** identificada uma divergência após o fechamento, o Administrador do Restaurante pode reabrir o caixa informando o motivo; o sistema registra autor, horário e justificativa, e o período volta a aceitar correções. |
 | **Fluxos de exceção** | **E1 – Entrega já vinculada a recibo:** o sistema a exclui da seleção e informa o número do recibo anterior. |
-| **Pós-condições** | Recibo com status GERADO (ou PAGO, após o passo 6); entregas bloqueadas para alteração de valor. |
+| **Pós-condições** | Recibo com status GERADO (ou PAGO, após o passo 6), vinculado ao caixa do dia. Os valores permanecem corrigíveis até o fechamento do caixa, quando se tornam imutáveis. |
 
 #### 1.4.2.4. UC04 – Monitorar Logística em Tempo Real
 
@@ -390,7 +391,7 @@ O diagrama apresentado abaixo contempla todos os casos de uso definidos para a s
 
 **História: HU07 – Gerar recibo de acerto**
 **Descrição:** COMO Operador, QUERO gerar um recibo unificado de todas as entregas feitas pelo entregador no período PARA realizar o PIX do acerto financeiro com rapidez e exatidão.
-**Regras de Negócio:** Após a geração do recibo, as entregas nele contidas não podem sofrer alteração de valor nem ser incluídas em outro recibo. O recibo registra o período, a quantidade de entregas, o valor total e o usuário que o gerou.
+**Regras de Negócio:** As entregas de um recibo não podem ser incluídas em outro recibo enquanto o vínculo existir. O valor, porém, permanece corrigível enquanto o caixa do dia estiver aberto, ainda que o recibo já tenha sido pago — é o fechamento do caixa que torna o período imutável. O recibo registra o período, a quantidade de entregas, o valor total e o usuário que o gerou.
 **Critérios de Aceite:** Dado que o turno encerrou, Quando o operador confirmar o acerto, Então um comprovante digital detalhado é criado e as entregas passam a constar como vinculadas ao recibo; E uma nova tentativa de incluí-las em outro recibo é recusada pelo sistema.
 
 #### 1.4.3.4. UC04 – Monitorar Logística em Tempo Real
@@ -466,7 +467,9 @@ Os status citados nas histórias de usuário são definidos formalmente abaixo. 
 
 **MOTOBOY (disponibilidade):** OFFLINE ⇄ ONLINE; ONLINE → EM_ROTA quando recebe lote; EM_ROTA → ONLINE ao concluir o lote ou quando o lote é devolvido.
 
-**RECIBO:** GERADO → PAGO (UC03, passo 6); GERADO → CANCELADO (UC03 A2), liberando as entregas para novo acerto.
+**RECIBO:** GERADO → PAGO (UC03, passo 6); GERADO ou PAGO → CANCELADO (UC03 A2), liberando as entregas para novo acerto. O cancelamento é permitido enquanto o caixa do período estiver aberto.
+
+**CAIXA:** ABERTO → FECHADO (fim do expediente); FECHADO → REABERTO (UC03 A3, privativo do Administrador do Restaurante, com motivo registrado); REABERTO → FECHADO. Com o caixa ABERTO ou REABERTO, os recibos e as entregas do período aceitam correção; FECHADO torna o período imutável.
 
 **ESTABELECIMENTO:** ATIVO ⇄ INATIVO.
 
@@ -524,6 +527,8 @@ O modelo abaixo substitui a versão 2.0 e incorpora as seguintes mudanças estru
 
 A **ENTREGA** guarda uma cópia operacional dos dados do cliente e do pagamento, de modo a ser autossuficiente tanto para pedidos importados (copiados de PEDIDO_EXTERNO) quanto para entregas avulsas (digitadas pelo operador). PEDIDO_EXTERNO permanece como registro fiel e imutável da origem (RNF13).
 
+O **CAIXA** representa o período de operação de um dia e é o que delimita até quando os valores daquele período podem ser corrigidos. Sem ele, a imutabilidade ficaria presa ao pagamento de cada recibo, o que não corresponde à operação real: a divergência costuma aparecer minutos depois, quando o operador confere o acerto com outro entregador.
+
 O **MOTOBOY** guarda apenas o que é específico da função de entregador. Nome, credencial e vínculo com o estabelecimento vêm do USUARIO associado, obrigatório, evitando que o mesmo dado exista em dois lugares e possa divergir.
 
 ![Modelo Lógico do Banco de Dados](img/der-modelo-logico.png)
@@ -540,11 +545,13 @@ erDiagram
     ESTABELECIMENTO ||--o{ ENTREGA : "origina"
     ESTABELECIMENTO ||--o{ LOTE_ENTREGA : "opera"
     ESTABELECIMENTO ||--o{ RECIBO : "emite"
+    ESTABELECIMENTO ||--o{ CAIXA : "opera diariamente"
     ESTABELECIMENTO ||--o{ CONFIGURACAO_INTEGRACAO : "configura"
 
     USUARIO ||--o| MOTOBOY : "credencia"
     USUARIO ||--o{ LOTE_ENTREGA : "despacha"
     USUARIO ||--o{ RECIBO : "gera"
+    USUARIO ||--o{ CAIXA : "fecha"
     USUARIO ||--o{ ENTREGA_STATUS_HISTORICO : "registra"
     USUARIO ||--o{ ENTREGA_AJUSTE_VALOR : "ajusta"
 
@@ -558,7 +565,8 @@ erDiagram
 
     LOTE_ENTREGA ||--o{ ENTREGA : "agrupa"
     DISTANCIA_PRECO ||--o{ ENTREGA : "precifica"
-    RECIBO ||--o{ ENTREGA : "consolida"
+    CAIXA ||--o{ RECIBO : "consolida"
+    RECIBO ||--o{ ENTREGA : "agrupa"
     ENTREGA ||--o{ ENTREGA_STATUS_HISTORICO : "historia"
     ENTREGA ||--o{ ENTREGA_AJUSTE_VALOR : "corrige"
 
@@ -730,9 +738,26 @@ erDiagram
         timestamp criado_em
         timestamp atualizado_em
     }
+    CAIXA {
+        uuid id PK
+        uuid estabelecimento_id FK
+        date data_referencia
+        timestamp aberto_em
+        timestamp fechado_em
+        uuid usuario_fechamento_id FK
+        varchar status
+        smallint qtd_recibos
+        decimal valor_total
+        timestamp reaberto_em
+        uuid usuario_reabertura_id FK
+        varchar motivo_reabertura
+        timestamp criado_em
+        timestamp atualizado_em
+    }
     RECIBO {
         uuid id PK
         uuid estabelecimento_id FK
+        uuid caixa_id FK
         uuid motoboy_id FK
         uuid usuario_gerador_id FK
         date data_referencia
@@ -881,7 +906,7 @@ erDiagram
 | pedido_externo_id | UUID | FK, NULL | Nulo quando a entrega é avulsa, cadastrada manualmente |
 | lote_id | UUID | FK, NULL | Nulo enquanto AGUARDANDO_DESPACHO |
 | faixa_preco_id | UUID | FK, NULL | Faixa aplicada; preenchida no cálculo |
-| recibo_id | UUID | FK, NULL | Preenchido no acerto; quando não nulo, o valor torna-se imutável (HU07) |
+| recibo_id | UUID | FK, NULL | Preenchido no acerto. O valor torna-se imutável quando o caixa do recibo é fechado, não na vinculação (HU07) |
 | nome_cliente | VARCHAR(120) | NOT NULL | Destinatário; copiado do PEDIDO_EXTERNO ou digitado na entrega avulsa |
 | telefone_cliente | VARCHAR(20) | | Base do deep link de WhatsApp (HU04) |
 | endereco_completo | VARCHAR(255) | NOT NULL | Endereço do cliente |
@@ -960,6 +985,7 @@ erDiagram
 | ----- | ----- | ----- | ----- |
 | id | UUID | PK | Identificador |
 | estabelecimento_id | UUID | FK, NOT NULL | Loja pagadora |
+| caixa_id | UUID | FK, NOT NULL | Período de operação a que o acerto pertence; define até quando pode ser corrigido |
 | motoboy_id | UUID | FK, NOT NULL | Beneficiário |
 | usuario_gerador_id | UUID | FK, NOT NULL | Quem fechou o acerto |
 | data_referencia | DATE | NOT NULL | Dia do acerto |
@@ -969,6 +995,26 @@ erDiagram
 | status | ENUM (GERADO, PAGO, CANCELADO) | NOT NULL | Conforme a seção 1.4.4 |
 | pago_em | TIMESTAMP | | Confirmação do PIX pelo operador (UC03, passo 6) |
 | criado_em, atualizado_em | TIMESTAMP | NOT NULL / NULL | Datas de controle padrão. Aqui `criado_em` é a emissão do recibo, que nasce GERADO |
+
+**CAIXA** — período de operação da loja, do início ao fim do expediente.
+
+| Coluna | Tipo | Restrições | Descrição |
+| ----- | ----- | ----- | ----- |
+| id | UUID | PK | Identificador |
+| estabelecimento_id | UUID | FK, NOT NULL | Loja |
+| data_referencia | DATE | NOT NULL, UNIQUE (com estabelecimento_id) | Dia de operação. Há no máximo um caixa por loja em cada dia |
+| aberto_em | TIMESTAMP | NOT NULL | Início do expediente |
+| fechado_em | TIMESTAMP | | Nulo enquanto o caixa não foi fechado |
+| usuario_fechamento_id | UUID | FK | Operador ou administrador que fechou |
+| status | ENUM (ABERTO, FECHADO, REABERTO) | NOT NULL | Conforme a seção 1.4.4 |
+| qtd_recibos | SMALLINT | | Consolidado gravado no fechamento |
+| valor_total | DECIMAL(12,2) | | Soma dos recibos do período |
+| reaberto_em | TIMESTAMP | | Momento da reabertura (UC03 A3) |
+| usuario_reabertura_id | UUID | FK | Administrador que reabriu; privativo do perfil ADMIN_RESTAURANTE |
+| motivo_reabertura | VARCHAR(255) | | Justificativa obrigatória na reabertura |
+| criado_em, atualizado_em | TIMESTAMP | NOT NULL / NULL | Datas de controle padrão |
+
+> **Por que o caixa existe:** divergências de acerto aparecem com frequência poucos minutos após o pagamento, quando o operador confere o valor com outro entregador. Travar o recibo no pagamento obrigaria a corrigir por fora do sistema. O caixa desloca o travamento para o fim do expediente, que é o momento em que a loja de fato encerra as contas do dia.
 
 ### 1.5.5. Regra de Precificação e Cálculo do Repasse
 
@@ -981,7 +1027,7 @@ O repasse é apurado **por entrega**, nunca por lote. O agrupamento em lote é u
 3. Se nenhuma faixa corresponder à distância, a entrega recebe `pendente_revisao = true` (motivo SEM_FAIXA) e o operador é notificado; o despacho é permitido, mas a entrega só pode entrar em recibo após a revisão.
 4. **Congelamento:** quando a entrega atinge ENTREGUE ou FALHA, o sistema reaplica a faixa **ativa naquele momento** e grava definitivamente `faixa_preco_id` e `valor_repasse`. Assim, uma alteração na tabela de preços vale para todas as entregas ainda não finalizadas, inclusive as já importadas, e nunca afeta entregas finalizadas (HU10).
 5. **Entrega cancelada:** se o cancelamento ocorrer antes da saída da loja (a partir de AGUARDANDO_DESPACHO ou DESPACHADA), a entrega recebe `valor_repasse = 0` e `faixa_preco_id` nulo, pois não houve deslocamento. Se ocorrer durante o percurso (a partir de EM_ROTA, UC02 A3), o repasse é **integral** e congelado como no passo 4, pois o entregador já se deslocou e precisa retornar à loja.
-6. **Ajuste manual:** "congelado" significa imune a mudanças na tabela de preços, não imune a correções. Enquanto `recibo_id` for nulo, o operador pode ajustar `valor_repasse` com motivo obrigatório, e cada ajuste é registrado em ENTREGA_AJUSTE_VALOR (UC03 A1). Após a vinculação a um recibo, o valor é imutável (HU07); a única forma de corrigi-lo é cancelar o recibo, o que libera as entregas.
+6. **Ajuste manual:** "congelado" significa imune a mudanças na tabela de preços, não imune a correções. O operador pode ajustar `valor_repasse` com motivo obrigatório enquanto o caixa do dia estiver aberto, mesmo que a entrega já conste de um recibo pago; cada ajuste é registrado em ENTREGA_AJUSTE_VALOR (UC03 A1). Corrigir uma entrega já vinculada exige cancelar o recibo, o que a libera para novo acerto. Fechado o caixa, o valor torna-se imutável (HU07).
 7. `LOTE_ENTREGA.valor_total_repasse` é a soma do `valor_repasse` das suas entregas.
 8. `RECIBO.valor_total` é a soma do `valor_repasse` das entregas do período em estado final, sem revisão pendente e ainda não vinculadas a nenhum recibo.
 

@@ -6,11 +6,13 @@ erDiagram
     ESTABELECIMENTO ||--o{ ENTREGA : "origina"
     ESTABELECIMENTO ||--o{ LOTE_ENTREGA : "opera"
     ESTABELECIMENTO ||--o{ RECIBO : "emite"
+    ESTABELECIMENTO ||--o{ CAIXA : "opera diariamente"
     ESTABELECIMENTO ||--o{ CONFIGURACAO_INTEGRACAO : "configura"
 
     USUARIO ||--o| MOTOBOY : "credencia"
     USUARIO ||--o{ LOTE_ENTREGA : "despacha"
     USUARIO ||--o{ RECIBO : "gera"
+    USUARIO ||--o{ CAIXA : "fecha"
     USUARIO ||--o{ ENTREGA_STATUS_HISTORICO : "registra"
     USUARIO ||--o{ ENTREGA_AJUSTE_VALOR : "ajusta"
 
@@ -24,7 +26,8 @@ erDiagram
 
     LOTE_ENTREGA ||--o{ ENTREGA : "agrupa"
     DISTANCIA_PRECO ||--o{ ENTREGA : "precifica"
-    RECIBO ||--o{ ENTREGA : "consolida"
+    CAIXA ||--o{ RECIBO : "consolida"
+    RECIBO ||--o{ ENTREGA : "agrupa"
     ENTREGA ||--o{ ENTREGA_STATUS_HISTORICO : "historia"
     ENTREGA ||--o{ ENTREGA_AJUSTE_VALOR : "corrige"
 
@@ -196,9 +199,26 @@ erDiagram
         timestamp criado_em
         timestamp atualizado_em
     }
+    CAIXA {
+        uuid id PK
+        uuid estabelecimento_id FK
+        date data_referencia
+        timestamp aberto_em
+        timestamp fechado_em
+        uuid usuario_fechamento_id FK
+        varchar status
+        smallint qtd_recibos
+        decimal valor_total
+        timestamp reaberto_em
+        uuid usuario_reabertura_id FK
+        varchar motivo_reabertura
+        timestamp criado_em
+        timestamp atualizado_em
+    }
     RECIBO {
         uuid id PK
         uuid estabelecimento_id FK
+        uuid caixa_id FK
         uuid motoboy_id FK
         uuid usuario_gerador_id FK
         date data_referencia
