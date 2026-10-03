@@ -17,6 +17,7 @@ Eduardo dos Santos de Camargo
 | 2.2 | Revisão de consistência: prazo ajustado para 17/11/2026; telemetria restrita à última posição; regra de congelamento e ajuste manual do repasse; repasse de entregas canceladas; sincronização do diagrama ER com o dicionário de dados; inclusão de ITEM_PEDIDO, ENTREGA_AJUSTE_VALOR e FALHA_INTEGRACAO; dados do cliente na ENTREGA (entregas avulsas); marcação de revisão; consentimento LGPD; índice cego para unicidade do CPF | Eduardo S.C | 02/10/2026 |
 | 2.3 | Distância de rota via Google Maps (substitui Haversine); credenciais do provedor no nível da aplicação; remoção do estado CRIADO do lote; fluxos de devolução de lote, pagamento e cancelamento de recibo; cancelamento durante EM_ROTA; UC07 – Autenticar-se e HU13; HU10 rastreada ao RF03; ajustes do cronograma (endpoint de teste e protótipo de GPS na Entrega 5) | Eduardo S.C | 02/10/2026 |
 | 2.4 | Ajustes decorrentes da implementação da camada de persistência: MOTOBOY deixa de ter FK própria para ESTABELECIMENTO, alcançado pelo USUARIO; padronização das datas de controle (`criado_em` e `atualizado_em`) em todas as entidades com PK UUID; campos de domínio fechado passam de VARCHAR com CHECK para tipo ENUM; inclusão das convenções gerais no dicionário de dados | Eduardo S.C | 02/10/2026 |
+| 2.5 | Revisão do modelo do entregador: MOTOBOY deixa de ter `nome`, que passa a existir apenas em USUARIO; remoção dos campos de consentimento LGPD, substituídos pela base legal de execução do contrato de trabalho (RNF07 reescrito, UC07 A1 removido) | Eduardo S.C | 03/10/2026 |
 
 ---
 
@@ -229,7 +230,7 @@ O sistema é **multilocatário (multi-tenant)**: uma mesma instalação atende d
 | RNF04 | Confiabilidade | O *worker* de integração deve tolerar indisponibilidade do provedor externo, aplicando repetição com recuo exponencial (*exponential backoff*) por até 5 tentativas; após isso, o pedido é encaminhado para uma fila de erro e sinalizado no painel, sem interromper o ciclo de *polling*. |
 | RNF05 | Manutenibilidade | O backend deve seguir rigorosamente a arquitetura em camadas do Spring Boot — Controller (REST), Service (regra de negócio), Repository (Spring Data JPA) e Entity (mapeamento objeto-relacional) — sem que uma camada superior seja acessada por uma inferior. |
 | RNF06 | Desempenho | A tela de despacho deve refletir a posição da frota e a mudança de status das entregas via WebSocket, com propagação de no máximo 5 segundos a partir do recebimento do evento pelo servidor. |
-| RNF07 | Conformidade | O tratamento de CPF e de dados de geolocalização deve observar a LGPD (Lei 13.709/2018): coleta limitada à finalidade de execução do contrato de trabalho, consentimento registrado no primeiro acesso ao aplicativo, e telemetria coletada (apenas posição atual) somente enquanto o entregador estiver com status ONLINE ou EM_ROTA. |
+| RNF07 | Conformidade | O tratamento de CPF e de dados de geolocalização deve observar a LGPD (Lei 13.709/2018): o tratamento apoia-se na execução do contrato de trabalho (art. 7º, V), e não em consentimento, que não seria livre numa relação de trabalho; a coleta limita-se ao necessário para a atividade; a telemetria registra apenas a posição atual e somente enquanto o entregador estiver com status ONLINE ou EM_ROTA. O entregador é informado do tratamento no momento da contratação, por meio do aviso de privacidade, em cumprimento ao dever de transparência (art. 9º). |
 | RNF08 | Disponibilidade | O sistema deve apresentar disponibilidade mínima de 99% na janela crítica de operação (18h às 23h59), período em que se concentra o volume de pedidos. |
 | RNF09 | Confiabilidade | O aplicativo deve operar sem conexão: as mudanças de status e as posições GPS são gravadas em fila local e sincronizadas automaticamente ao restabelecimento da rede, preservando o horário original do evento. |
 | RNF10 | Portabilidade | O aplicativo deve ser compatível com Android 8.0 (API 26) ou superior. |
@@ -333,7 +334,7 @@ O diagrama apresentado abaixo contempla todos os casos de uso definidos para a s
 | **Atores principais** | Administrador Geral, Administrador do Restaurante, Operador de Logística, Entregador |
 | **Pré-condições** | O usuário possui cadastro em USUARIO. |
 | **Fluxo principal** | 1. O usuário informa e-mail e senha no Backoffice Web ou no aplicativo. 2. O sistema valida a senha contra o hash BCrypt (RNF02). 3. O sistema verifica se o usuário está ativo e, exceto para ADMIN_GERAL, se o estabelecimento vinculado está ATIVO. 4. Para o perfil ENTREGADOR, verifica também se o cadastro do entregador está ATIVO. 5. O sistema emite um token JWT contendo o identificador do usuário, o perfil e o estabelecimento, e registra `ultimo_acesso_em`. 6. O cliente direciona o usuário às funcionalidades do seu perfil. |
-| **Fluxos alternativos** | **A1 – Primeiro acesso do entregador:** antes de liberar o aplicativo, o sistema exibe o termo de consentimento LGPD e registra o aceite (RNF07). **A2 – Token expirado:** a requisição é recusada e o cliente redireciona para nova autenticação. |
+| **Fluxos alternativos** | **A1 – Token expirado:** a requisição é recusada e o cliente redireciona para nova autenticação. |
 | **Fluxos de exceção** | **E1 – Credenciais inválidas:** o sistema recusa com mensagem genérica, sem indicar se o erro está no e-mail ou na senha. **E2 – Estabelecimento INATIVO:** o sistema recusa e informa que o acesso da loja está suspenso (HU12). **E3 – Usuário inativo ou entregador BLOQUEADO:** o sistema recusa o acesso. **E4 – Perfil incompatível com o cliente:** um usuário ENTREGADOR não acessa o Backoffice, e os demais perfis não acessam o aplicativo. |
 | **Pós-condições** | Usuário autenticado com token válido; todas as consultas operacionais passam a ser filtradas pelo seu estabelecimento. |
 
@@ -599,8 +600,6 @@ erDiagram
         decimal ultima_latitude
         decimal ultima_longitude
         timestamp ultima_posicao_em
-        timestamp consentimento_lgpd_em
-        varchar consentimento_lgpd_versao
         timestamp criado_em
         timestamp atualizado_em
     }
@@ -802,8 +801,6 @@ erDiagram
 | status_disponibilidade | ENUM (OFFLINE, ONLINE, EM_ROTA) | NOT NULL | Apenas ONLINE recebe despacho |
 | ultima_latitude, ultima_longitude | DECIMAL(10,7) | | Última posição, para carga inicial do mapa |
 | ultima_posicao_em | TIMESTAMP | | Base do alerta de entregador sem transmitir |
-| consentimento_lgpd_em | TIMESTAMP | | Momento do aceite do termo no primeiro acesso ao aplicativo; nulo impede ficar ONLINE (RNF07) |
-| consentimento_lgpd_versao | VARCHAR(10) | | Versão do termo aceito; nova versão exige novo aceite |
 | criado_em, atualizado_em | TIMESTAMP | NOT NULL / NULL | Datas de controle padrão |
 
 > MOTOBOY não possui nome nem FK direta para ESTABELECIMENTO: ambos vêm do USUARIO associado, que é obrigatório. O nome é mantido em um único lugar, válido para todos os perfis, de modo que não haja duas respostas possíveis para o nome de uma mesma pessoa.
