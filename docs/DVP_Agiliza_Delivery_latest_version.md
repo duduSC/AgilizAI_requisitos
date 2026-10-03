@@ -1,4 +1,3 @@
-Universidade de Passo Fundo – UPF
 
 # DOCUMENTO DE VISÃO DO PRODUTO – DVP
 
@@ -15,6 +14,8 @@ Eduardo dos Santos de Camargo
 | 1.5 | Finalização do DVP | Eduardo S.C | 12/08/2026 |
 | 2.0 | Versão Final do DVP | Eduardo S.C | 02/09/2026 |
 | 2.1 | Revisão técnica: stack padronizada em Spring Boot; inclusão de escopo, premissas, restrições, riscos e glossário; descrição dos casos de uso; matriz de rastreabilidade; máquina de estados; definição da regra de precificação; reformulação do modelo lógico do banco de dados | Eduardo S.C | 16/09/2026 |
+| 2.2 | Revisão de consistência: prazo ajustado para 17/11/2026; telemetria restrita à última posição; regra de congelamento e ajuste manual do repasse; repasse de entregas canceladas; sincronização do diagrama ER com o dicionário de dados; inclusão de ITEM_PEDIDO, ENTREGA_AJUSTE_VALOR e FALHA_INTEGRACAO; dados do cliente na ENTREGA (entregas avulsas); marcação de revisão; consentimento LGPD; índice cego para unicidade do CPF | Eduardo S.C | 02/10/2026 |
+| 2.3 | Distância de rota via Google Maps (substitui Haversine); credenciais do provedor no nível da aplicação; remoção do estado CRIADO do lote; fluxos de devolução de lote, pagamento e cancelamento de recibo; cancelamento durante EM_ROTA; UC07 – Autenticar-se e HU13; HU10 rastreada ao RF03; ajustes do cronograma (endpoint de teste e protótipo de GPS na Entrega 5) | Eduardo S.C | 02/10/2026 |
 
 ---
 
@@ -133,19 +134,19 @@ O sistema é **multilocatário (multi-tenant)**: uma mesma instalação atende d
 
 - O aplicativo do entregador será entregue apenas para Android (Flutter).
 - A integração limita-se às APIs oficiais e públicas do provedor; não haverá raspagem de dados (*scraping*).
-- O projeto é desenvolvido por um único desenvolvedor, com prazo acadêmico encerrando em 13/11/2026.
-- O cálculo de distância utilizará fórmula geodésica (Haversine) sobre as coordenadas, podendo evoluir para API de rotas conforme o custo de licenciamento.
+- O projeto é desenvolvido por um único desenvolvedor, com prazo acadêmico encerrando em 17/11/2026.
+- A distância de cada entrega é a **distância de rota** (percurso viário) entre a loja e o endereço do cliente, obtida por API de rotas (Google Maps Platform – Routes API), e não a distância em linha reta.
 
 ### 1.2.6. Riscos do Projeto
 
 | ID | Risco | Prob. | Impacto | Mitigação |
 | :---: | ----- | :---: | :---: | ----- |
 | R01 | O acesso à API do iFood depende de homologação/parceria comercial, que pode não ser concedida no prazo do projeto | Alta | Alto | Modelar a integração como *Provedor de Pedidos* com padrão Adapter; desenvolver um simulador de provedor que responda no mesmo contrato, permitindo concluir a Entrega 3 e todas as seguintes sem depender da homologação |
-| R02 | Restrições de execução em segundo plano do Android (Doze/App Standby) interrompem a telemetria | Média | Alto | Implementar *foreground service* com notificação persistente e testar em aparelho físico desde a Entrega 7 |
+| R02 | Restrições de execução em segundo plano do Android (Doze/App Standby) interrompem a telemetria | Média | Alto | Implementar *foreground service* com notificação persistente e validar um protótipo em aparelho físico já na Entrega 5, deixando a Entrega 7 apenas para a integração completa |
 | R03 | Conectividade instável do entregador em rua impede o reporte de status | Alta | Médio | Fila local de eventos no aplicativo com sincronização posterior (RNF09) |
 | R04 | Geocodificação imprecisa de endereços gera cálculo de repasse incorreto | Alta | Médio | Permitir o ajuste manual do pino pelo operador antes do despacho e registrar a coordenada efetivamente utilizada na entrega |
 | R05 | Escopo amplo para a cadência semanal de entregas | Média | Alto | Escopo do MVP priorizado por requisito; funcionalidades fora do MVP explicitamente listadas na seção 1.2.4 |
-| R06 | Custo das APIs de mapas e geocodificação | Média | Médio | Cache das coordenadas por endereço normalizado e avaliação de alternativa aberta (OpenStreetMap/Nominatim) |
+| R06 | Custo e indisponibilidade das APIs de mapas, geocodificação e rotas | Média | Médio | Distância calculada uma única vez por entrega (e novamente só se o operador ajustar o pino); cache da coordenada e da distância por endereço normalizado; em falha da API, a entrega é marcada para revisão sem bloquear o despacho (seção 1.5.5) |
 | R07 | Consumo excessivo de bateria do aparelho do entregador | Média | Médio | Intervalo de coleta de 20 s (RNF01) e envio em lote das posições acumuladas |
 
 ### 1.2.7. Glossário
@@ -199,7 +200,7 @@ O sistema é **multilocatário (multi-tenant)**: uma mesma instalação atende d
 | :---- | :---- |
 | **Priorização:** | [   ] 1   [ X ] 2   [   ] 3   [   ] 4   [   ] 5 |
 | **Dependência com outro(s) requisito(s):** | *RF02* |
-| **Problema /Necessidades Identificadas:** *Captura contínua da localização GPS do entregador em segundo plano, com histórico persistido para auditoria, integrando-se ao painel Web para o monitoramento da frota em tempo real no mapa.* | |
+| **Problema /Necessidades Identificadas:** *Captura contínua da localização GPS do entregador em segundo plano, mantendo apenas a última posição conhecida de cada entregador (RNF07) e integrando-se ao painel Web para o monitoramento da frota em tempo real no mapa. Para fins de auditoria, a coordenada do entregador é registrada somente em cada mudança de status da entrega (ENTREGA_STATUS_HISTORICO); não há trilha contínua de posições.* | |
 
 #### 1.3.1.5. RF05 – Administração do Sistema e Segurança (Web)
 
@@ -207,7 +208,7 @@ O sistema é **multilocatário (multi-tenant)**: uma mesma instalação atende d
 | :---- | :---- |
 | **Priorização:** | [ X ] 1   [   ] 2   [   ] 3   [   ] 4   [   ] 5 |
 | **Dependência com outro(s) requisito(s):** | *RF06* |
-| **Problema /Necessidades Identificadas:** *Controla a autenticação e a autorização de todos os usuários por perfil de acesso, permitindo o CRUD de entregadores pelo Administrador do Restaurante e a parametrização operacional da loja (limite de pedidos por lote e faixas de preço). A extração de relatórios analíticos está fora do escopo do MVP, conforme a seção 1.2.4.* | |
+| **Problema /Necessidades Identificadas:** *Controla a autenticação e a autorização de todos os usuários por perfil de acesso, permitindo o CRUD de entregadores pelo Administrador do Restaurante e a parametrização operacional da loja (limite de pedidos por lote e vínculo com o provedor de pedidos). A manutenção das faixas de preço pertence ao RF03. A extração de relatórios analíticos está fora do escopo do MVP, conforme a seção 1.2.4.* | |
 
 #### 1.3.1.6. RF06 – Gestão de Restaurantes Parceiros (Web)
 
@@ -227,7 +228,7 @@ O sistema é **multilocatário (multi-tenant)**: uma mesma instalação atende d
 | RNF04 | Confiabilidade | O *worker* de integração deve tolerar indisponibilidade do provedor externo, aplicando repetição com recuo exponencial (*exponential backoff*) por até 5 tentativas; após isso, o pedido é encaminhado para uma fila de erro e sinalizado no painel, sem interromper o ciclo de *polling*. |
 | RNF05 | Manutenibilidade | O backend deve seguir rigorosamente a arquitetura em camadas do Spring Boot — Controller (REST), Service (regra de negócio), Repository (Spring Data JPA) e Entity (mapeamento objeto-relacional) — sem que uma camada superior seja acessada por uma inferior. |
 | RNF06 | Desempenho | A tela de despacho deve refletir a posição da frota e a mudança de status das entregas via WebSocket, com propagação de no máximo 5 segundos a partir do recebimento do evento pelo servidor. |
-| RNF07 | Conformidade | O tratamento de CPF e de dados de geolocalização deve observar a LGPD (Lei 13.709/2018): coleta limitada à finalidade de execução do contrato de trabalho, consentimento registrado no primeiro acesso ao aplicativo, telemetria coletada somente enquanto o entregador estiver com status ONLINE ou EM_ROTA, e expurgo do histórico de posições após 90 dias. |
+| RNF07 | Conformidade | O tratamento de CPF e de dados de geolocalização deve observar a LGPD (Lei 13.709/2018): coleta limitada à finalidade de execução do contrato de trabalho, consentimento registrado no primeiro acesso ao aplicativo, e telemetria coletada (apenas posição atual) somente enquanto o entregador estiver com status ONLINE ou EM_ROTA. |
 | RNF08 | Disponibilidade | O sistema deve apresentar disponibilidade mínima de 99% na janela crítica de operação (18h às 23h59), período em que se concentra o volume de pedidos. |
 | RNF09 | Confiabilidade | O aplicativo deve operar sem conexão: as mudanças de status e as posições GPS são gravadas em fila local e sincronizadas automaticamente ao restabelecimento da rede, preservando o horário original do evento. |
 | RNF10 | Portabilidade | O aplicativo deve ser compatível com Android 8.0 (API 26) ou superior. |
@@ -251,6 +252,9 @@ O diagrama apresentado abaixo contempla todos os casos de uso definidos para a s
 | UC04 – Monitorar Logística em Tempo Real | Operador de Logística | — |
 | UC05 – Configurar Estabelecimento e Frota | Administrador do Restaurante | — |
 | UC06 – Gerenciar Restaurantes | Administrador Geral | — |
+| UC07 – Autenticar-se | Administrador Geral, Administrador do Restaurante, Operador de Logística, Entregador | — |
+
+> O UC07 é incluído (*include*) por todos os demais casos de uso, que o têm como pré-condição.
 
 ### 1.4.2. Descrição dos Casos de Uso
 
@@ -262,7 +266,7 @@ O diagrama apresentado abaixo contempla todos os casos de uso definidos para a s
 | **Atores secundários** | Sistema Externo (iFood) |
 | **Pré-condições** | O operador está autenticado; o estabelecimento está com status ATIVO; a integração com o provedor está configurada. |
 | **Fluxo principal** | 1. O *worker* consulta o provedor externo a cada 30 s. 2. O sistema identifica pedidos ainda não importados e os persiste. 3. O sistema geocodifica o endereço, calcula a distância até a loja e determina a faixa de preço. 4. A entrega passa a AGUARDANDO_DESPACHO e seu pino aparece no mapa. 5. O operador seleciona de 1 a *N* pedidos próximos. 6. O operador seleciona um entregador ONLINE e confirma o despacho. 7. O sistema cria o lote, muda as entregas para DESPACHADA e notifica o aplicativo via WebSocket. |
-| **Fluxos alternativos** | **A1 – Endereço não geocodificado:** a entrega é marcada para revisão e o operador ajusta o pino manualmente antes de despachar. **A2 – Pedido avulso:** o operador cadastra manualmente a entrega, que segue do passo 3. **A3 – Provedor indisponível:** aplica-se o RNF04; o painel exibe o alerta de integração degradada. |
+| **Fluxos alternativos** | **A1 – Endereço não geocodificado:** a entrega é marcada para revisão (`pendente_revisao`) e o operador ajusta o pino manualmente antes de despachar. **A2 – Pedido avulso:** o operador cadastra manualmente a entrega, informando endereço e dados do cliente e do pagamento diretamente na ENTREGA (sem PEDIDO_EXTERNO); o fluxo segue do passo 3. **A3 – Provedor indisponível:** aplica-se o RNF04; o painel exibe o alerta de integração degradada. **A4 – Devolver lote:** enquanto o lote estiver DESPACHADO (o entregador ainda não saiu da loja), o operador pode desfazer o despacho; o lote passa a CANCELADO, suas entregas voltam a AGUARDANDO_DESPACHO (com `lote_id` nulo e a transição registrada no histórico), o entregador volta a ONLINE e o aplicativo é notificado. |
 | **Fluxos de exceção** | **E1 – Nenhum entregador ONLINE:** o sistema bloqueia o despacho e informa o operador. **E2 – Limite do lote excedido:** o sistema recusa a seleção acima do limite parametrizado na loja. |
 | **Pós-condições** | Lote criado com status DESPACHADO e visível no aplicativo do entregador. |
 
@@ -273,7 +277,7 @@ O diagrama apresentado abaixo contempla todos os casos de uso definidos para a s
 | **Ator principal** | Entregador |
 | **Pré-condições** | O entregador está autenticado, com cadastro ATIVO e status ONLINE; existe lote despachado para ele. |
 | **Fluxo principal** | 1. O entregador recebe a notificação do lote. 2. Visualiza a lista de entregas com endereço, itens, valor e forma de pagamento. 3. Aciona o deep link de navegação ou de contato conforme a necessidade. 4. Ao sair da loja, registra o início do percurso. 5. A cada cliente, registra ENTREGUE ou FALHA. 6. Ao concluir a última entrega, o lote é encerrado e o repasse é consolidado. |
-| **Fluxos alternativos** | **A1 – Falha na entrega:** o entregador seleciona o motivo; a entrega vai para FALHA e, conforme a regra da seção 1.5.5, o repasse é devido integralmente. **A2 – Sem conexão:** o evento é enfileirado localmente e sincronizado depois (RNF09). |
+| **Fluxos alternativos** | **A1 – Falha na entrega:** o entregador seleciona o motivo; a entrega vai para FALHA e, conforme a regra da seção 1.5.5, o repasse é devido integralmente. **A2 – Sem conexão:** o evento é enfileirado localmente e sincronizado depois (RNF09). **A3 – Pedido cancelado durante o percurso:** quando o provedor (detectado pelo `status_externo`) ou o operador cancela uma entrega EM_ROTA, o aplicativo alerta o entregador, que retorna o pedido à loja; a entrega vai para CANCELADA e, conforme a seção 1.5.5, o repasse é devido integralmente. |
 | **Fluxos de exceção** | **E1 – Aplicativo sem permissão de localização:** o sistema impede a mudança para ONLINE e orienta a concessão da permissão. |
 | **Pós-condições** | Todas as entregas do lote em estado final; lote CONCLUIDO; valores de repasse gravados. |
 
@@ -284,10 +288,10 @@ O diagrama apresentado abaixo contempla todos os casos de uso definidos para a s
 | **Ator principal** | Operador de Logística |
 | **Atores secundários** | Administrador do Restaurante |
 | **Pré-condições** | Existem entregas em estado final e ainda não incluídas em recibo. |
-| **Fluxo principal** | 1. O operador seleciona o entregador e o período. 2. O sistema lista as entregas do período com a faixa aplicada e o valor de cada uma. 3. O sistema apresenta o total devido. 4. O operador confirma o acerto. 5. O sistema gera o recibo, vincula as entregas a ele e as torna imutáveis. |
-| **Fluxos alternativos** | **A1 – Divergência identificada:** antes de confirmar, o operador corrige a entrega (motivo registrado em auditoria) e o total é recalculado. |
+| **Fluxo principal** | 1. O operador seleciona o entregador e o período. 2. O sistema lista as entregas do período com a faixa aplicada e o valor de cada uma. 3. O sistema apresenta o total devido. 4. O operador confirma o acerto. 5. O sistema gera o recibo com status GERADO, vincula as entregas a ele e as torna imutáveis. 6. Após realizar o PIX fora da plataforma, o operador marca o recibo como PAGO e o sistema registra `pago_em`. |
+| **Fluxos alternativos** | **A1 – Divergência identificada:** antes de confirmar, o operador ajusta o valor do repasse da entrega, informando obrigatoriamente o motivo; o ajuste é registrado em ENTREGA_AJUSTE_VALOR (valor anterior, valor novo, autor e horário) e o total é recalculado. Ajustes só são permitidos enquanto a entrega não estiver vinculada a recibo (seção 1.5.5). **A2 – Cancelar recibo:** enquanto o recibo estiver GERADO, o operador pode cancelá-lo informando o motivo; o recibo passa a CANCELADO e suas entregas são desvinculadas (`recibo_id` nulo), voltando a estar disponíveis para ajuste e novo acerto. Recibos PAGOS não podem ser cancelados. |
 | **Fluxos de exceção** | **E1 – Entrega já vinculada a recibo:** o sistema a exclui da seleção e informa o número do recibo anterior. |
-| **Pós-condições** | Recibo com status GERADO; entregas bloqueadas para alteração de valor. |
+| **Pós-condições** | Recibo com status GERADO (ou PAGO, após o passo 6); entregas bloqueadas para alteração de valor. |
 
 #### 1.4.2.4. UC04 – Monitorar Logística em Tempo Real
 
@@ -305,7 +309,7 @@ O diagrama apresentado abaixo contempla todos os casos de uso definidos para a s
 | ----- | ----- |
 | **Ator principal** | Administrador do Restaurante |
 | **Pré-condições** | Administrador autenticado em estabelecimento ATIVO. |
-| **Fluxo principal** | 1. O administrador acessa a configuração da loja. 2. Cadastra, edita, bloqueia ou desbloqueia entregadores. 3. Mantém as faixas de preço por distância. 4. Define o limite de pedidos por lote. 5. Registra as credenciais de integração com o provedor. |
+| **Fluxo principal** | 1. O administrador acessa a configuração da loja. 2. Cadastra, edita, bloqueia ou desbloqueia entregadores. 3. Mantém as faixas de preço por distância. 4. Define o limite de pedidos por lote. 5. Vincula a loja ao provedor informando o identificador da loja no provedor (`merchant_id`), após autorizar o Agiliza Delivery no portal do provedor. |
 | **Fluxos de exceção** | **E1 – Faixas sobrepostas:** o sistema recusa a gravação e indica o conflito. **E2 – CPF já cadastrado:** o sistema recusa a duplicidade. |
 | **Pós-condições** | Parâmetros vigentes para os próximos cálculos; faixas anteriores preservadas para fins de auditoria. |
 
@@ -318,6 +322,17 @@ O diagrama apresentado abaixo contempla todos os casos de uso definidos para a s
 | **Fluxo principal** | 1. Cadastra o restaurante com CNPJ único. 2. O sistema cria o usuário master da loja e envia as credenciais. 3. O administrador pode inativar ou reativar o estabelecimento. |
 | **Fluxos de exceção** | **E1 – CNPJ já cadastrado:** o sistema recusa a operação. |
 | **Pós-condições** | Estabelecimento apto a operar, ou bloqueado para login de todos os seus usuários. |
+
+#### 1.4.2.7. UC07 – Autenticar-se
+
+| | |
+| ----- | ----- |
+| **Atores principais** | Administrador Geral, Administrador do Restaurante, Operador de Logística, Entregador |
+| **Pré-condições** | O usuário possui cadastro em USUARIO. |
+| **Fluxo principal** | 1. O usuário informa e-mail e senha no Backoffice Web ou no aplicativo. 2. O sistema valida a senha contra o hash BCrypt (RNF02). 3. O sistema verifica se o usuário está ativo e, exceto para ADMIN_GERAL, se o estabelecimento vinculado está ATIVO. 4. Para o perfil ENTREGADOR, verifica também se o cadastro do entregador está ATIVO. 5. O sistema emite um token JWT contendo o identificador do usuário, o perfil e o estabelecimento, e registra `ultimo_acesso_em`. 6. O cliente direciona o usuário às funcionalidades do seu perfil. |
+| **Fluxos alternativos** | **A1 – Primeiro acesso do entregador:** antes de liberar o aplicativo, o sistema exibe o termo de consentimento LGPD e registra o aceite (RNF07). **A2 – Token expirado:** a requisição é recusada e o cliente redireciona para nova autenticação. |
+| **Fluxos de exceção** | **E1 – Credenciais inválidas:** o sistema recusa com mensagem genérica, sem indicar se o erro está no e-mail ou na senha. **E2 – Estabelecimento INATIVO:** o sistema recusa e informa que o acesso da loja está suspenso (HU12). **E3 – Usuário inativo ou entregador BLOQUEADO:** o sistema recusa o acesso. **E4 – Perfil incompatível com o cliente:** um usuário ENTREGADOR não acessa o Backoffice, e os demais perfis não acessam o aplicativo. |
+| **Pós-condições** | Usuário autenticado com token válido; todas as consultas operacionais passam a ser filtradas pelo seu estabelecimento. |
 
 ### 1.4.3. Histórias de Usuário Por Caso de Uso
 
@@ -382,7 +397,7 @@ O diagrama apresentado abaixo contempla todos os casos de uso definidos para a s
 
 **História: HU08 – Monitorar a frota no mapa**
 **Descrição:** COMO Operador, QUERO enxergar a posição em tempo real e o status atual de cada entregador da frota no mapa PARA saber imediatamente quem está mais perto de uma nova retirada.
-**Regras de Negócio:** A posição é atualizada em segundo plano a cada 20 segundos enquanto o entregador estiver ONLINE ou EM_ROTA (RNF01), e a coleta cessa quando ele fica OFFLINE (RNF07). O histórico de posições é retido por 90 dias.
+**Regras de Negócio:** A posição é atualizada em segundo plano a cada 20 segundos enquanto o entregador estiver ONLINE ou EM_ROTA (RNF01), e a coleta cessa quando ele fica OFFLINE (RNF07). Apenas a última posição é mantida para visualização em tempo real.
 **Critérios de Aceite:** Dado que um entregador está executando um lote, Quando o operador observar o mapa de monitoramento, Então um ícone identificado com o nome dele se moverá pelo mapa, com atraso máximo de 5 segundos em relação ao recebimento da posição pelo servidor.
 
 #### 1.4.3.5. UC05 – Configurar Estabelecimento e Frota
@@ -417,6 +432,17 @@ O diagrama apresentado abaixo contempla todos os casos de uso definidos para a s
 **Regras de Negócio:** Com o estabelecimento inativo, nenhum usuário vinculado a ele consegue autenticar-se, e os entregadores não conseguem ficar on-line para essa loja. O *worker* de integração deixa de consultar o provedor para esse estabelecimento.
 **Critérios de Aceite:** Dado que o restaurante "Pizzaria XYZ" não utilizará mais o serviço, Quando o Administrador Geral alterar o status para INATIVO, Então os usuários do restaurante receberão mensagem de erro ao tentar autenticar-se.
 
+#### 1.4.3.7. UC07 – Autenticar-se
+
+| Objetivo: | Garantir que cada usuário acesse apenas as funcionalidades e os dados do seu perfil e do seu estabelecimento. |
+| ----- | :---- |
+| **HISTÓRIAS DE USUÁRIOS** | |
+
+**História: HU13 – Acessar o sistema conforme o perfil**
+**Descrição:** COMO usuário da plataforma (administrador, operador ou entregador), QUERO autenticar-me com e-mail e senha PARA acessar somente as funcionalidades do meu perfil e os dados do meu estabelecimento.
+**Regras de Negócio:** A senha é validada contra o hash BCrypt (RNF02). O token JWT carrega o perfil e o estabelecimento, e todas as consultas operacionais são filtradas por esse estabelecimento. O acesso é negado a usuários inativos, a entregadores BLOQUEADOS e a usuários de estabelecimentos INATIVOS (HU12). A mensagem de erro de credenciais é genérica.
+**Critérios de Aceite:** Dado que um operador da "Pizzaria XYZ" está autenticado, Quando ele consultar as entregas pendentes, Então o sistema exibirá apenas as entregas da "Pizzaria XYZ"; E uma tentativa de acessar por URL uma entrega de outro estabelecimento será recusada.
+
 ### 1.4.4. Máquina de Estados dos Objetos de Negócio
 
 Os status citados nas histórias de usuário são definidos formalmente abaixo. Nenhum outro valor é admitido.
@@ -427,16 +453,16 @@ Os status citados nas histórias de usuário são definidos formalmente abaixo. 
 | ----- | ----- | ----- |
 | AGUARDANDO_DESPACHO | Importada ou cadastrada; visível no mapa de pendentes | → DESPACHADA, CANCELADA |
 | DESPACHADA | Incluída em um lote atribuído a um entregador | → EM_ROTA, AGUARDANDO_DESPACHO (devolução do lote), CANCELADA |
-| EM_ROTA | O entregador saiu da loja com o pedido | → ENTREGUE, FALHA |
+| EM_ROTA | O entregador saiu da loja com o pedido | → ENTREGUE, FALHA, CANCELADA (cancelamento durante o percurso) |
 | ENTREGUE | Estado final. Entregue ao cliente | — |
 | FALHA | Estado final. Não entregue; exige motivo | — |
 | CANCELADA | Estado final. Cancelada na origem (provedor ou operador) | — |
 
-**LOTE_ENTREGA:** CRIADO → DESPACHADO → EM_ROTA → CONCLUIDO; CANCELADO é alcançável a partir de CRIADO e DESPACHADO.
+**LOTE_ENTREGA:** DESPACHADO → EM_ROTA → CONCLUIDO; DESPACHADO → CANCELADO (devolução do lote, UC01 A4). O lote nasce DESPACHADO, pois é criado no ato do despacho. Ele é CONCLUIDO quando todas as suas entregas atingem estado final.
 
-**MOTOBOY (disponibilidade):** OFFLINE ⇄ ONLINE; ONLINE → EM_ROTA quando recebe lote; EM_ROTA → ONLINE ao concluir o lote.
+**MOTOBOY (disponibilidade):** OFFLINE ⇄ ONLINE; ONLINE → EM_ROTA quando recebe lote; EM_ROTA → ONLINE ao concluir o lote ou quando o lote é devolvido.
 
-**RECIBO:** GERADO → PAGO; CANCELADO alcançável a partir de GERADO, liberando as entregas para novo acerto.
+**RECIBO:** GERADO → PAGO (UC03, passo 6); GERADO → CANCELADO (UC03 A2), liberando as entregas para novo acerto.
 
 **ESTABELECIMENTO:** ATIVO ⇄ INATIVO.
 
@@ -446,11 +472,11 @@ Os status citados nas histórias de usuário são definidos formalmente abaixo. 
 
 | RF | Caso de Uso | Histórias | RNF associados | Entidades principais |
 | :---: | ----- | ----- | ----- | ----- |
-| RF01 | UC01 – Gerenciar Fluxo de Entregas | HU01, HU02, HU03 | RNF03, RNF04, RNF06, RNF13 | PEDIDO_EXTERNO, PEDIDO_EXTERNO_ITEM, ENTREGA, LOTE_ENTREGA |
+| RF01 | UC01 – Gerenciar Fluxo de Entregas | HU01, HU02, HU03 | RNF03, RNF04, RNF06, RNF13 | PEDIDO_EXTERNO, ITEM_PEDIDO, ENTREGA, LOTE_ENTREGA, FALHA_INTEGRACAO |
 | RF02 | UC02 – Executar Lote de Entrega | HU04, HU05 | RNF06, RNF09, RNF10, RNF11 | LOTE_ENTREGA, ENTREGA, ENTREGA_STATUS_HISTORICO |
-| RF03 | UC03 – Fechar Acerto Financeiro | HU06, HU07 | RNF03 | DISTANCIA_PRECO, ENTREGA, RECIBO |
-| RF04 | UC04 – Monitorar Logística em Tempo Real | HU08 | RNF01, RNF06, RNF07, RNF09 | POSICAO_GPS, MOTOBOY |
-| RF05 | UC05 – Configurar Estabelecimento e Frota | HU09, HU10 | RNF02, RNF05, RNF07 | USUARIO, MOTOBOY, DISTANCIA_PRECO, CONFIGURACAO_INTEGRACAO |
+| RF03 | UC03 – Fechar Acerto Financeiro; UC05 – Configurar Estabelecimento e Frota (faixas de preço) | HU06, HU07, HU10 | RNF03 | DISTANCIA_PRECO, ENTREGA, ENTREGA_AJUSTE_VALOR, RECIBO |
+| RF04 | UC04 – Monitorar Logística em Tempo Real | HU08 | RNF01, RNF06, RNF07, RNF09 | MOTOBOY, ENTREGA_STATUS_HISTORICO |
+| RF05 | UC05 – Configurar Estabelecimento e Frota; UC07 – Autenticar-se | HU09, HU13 | RNF02, RNF05, RNF07 | USUARIO, MOTOBOY, CONFIGURACAO_INTEGRACAO |
 | RF06 | UC06 – Gerenciar Restaurantes | HU11, HU12 | RNF02, RNF08, RNF12 | ESTABELECIMENTO, USUARIO |
 
 ## 1.5. Projeto Técnico
@@ -484,12 +510,15 @@ Nenhuma camada inferior acessa uma camada superior, conforme o RNF05.
 | Maven | 3.9.x | Gestão de dependências e build |
 | Flyway | 10.x | Versionamento e migração do esquema do banco |
 | Leaflet + OpenStreetMap | Latest | Renderização de mapas no painel de despacho |
+| Google Maps Platform – Routes API | Latest | Cálculo da distância de rota loja → cliente, base da faixa de repasse |
 | JWT (jjwt) | Latest | Tokens de autenticação |
 | Docker | Latest | Padronização do ambiente de execução |
 
 ### 1.5.3. Modelo Lógico do Banco de Dados
 
-O modelo abaixo substitui a versão 2.0 e incorpora quatro mudanças estruturais: (a) a entidade **ESTABELECIMENTO** como raiz da multilocação, referenciada por todas as entidades operacionais; (b) a persistência dos dados recebidos do provedor externo em **PEDIDO_EXTERNO** e **PEDIDO_EXTERNO_ITEM**, com chave de idempotência; (c) o histórico de telemetria e de mudanças de status, em **POSICAO_GPS** e **ENTREGA_STATUS_HISTORICO**; e (d) a entidade **RECIBO**, que materializa o acerto financeiro exigido pela HU07.
+O modelo abaixo substitui a versão 2.0 e incorpora as seguintes mudanças estruturais: (a) a entidade **ESTABELECIMENTO** como raiz da multilocação, referenciada por todas as entidades operacionais; (b) a persistência dos dados recebidos do provedor externo em **PEDIDO_EXTERNO** e **ITEM_PEDIDO**, com chave de idempotência; (c) o histórico de mudanças de status, em **ENTREGA_STATUS_HISTORICO**; (d) a entidade **RECIBO**, que materializa o acerto financeiro exigido pela HU07; (e) a trilha de ajustes manuais de repasse, em **ENTREGA_AJUSTE_VALOR** (UC03 A1); e (f) a fila de erro da integração, em **FALHA_INTEGRACAO** (RNF04).
+
+A **ENTREGA** guarda uma cópia operacional dos dados do cliente e do pagamento, de modo a ser autossuficiente tanto para pedidos importados (copiados de PEDIDO_EXTERNO) quanto para entregas avulsas (digitadas pelo operador). PEDIDO_EXTERNO permanece como registro fiel e imutável da origem (RNF13).
 
 ![Modelo Lógico do Banco de Dados](img/der-modelo-logico.png)
 
@@ -500,29 +529,32 @@ O modelo abaixo substitui a versão 2.0 e incorpora quatro mudanças estruturais
 erDiagram
     direction LR
     ESTABELECIMENTO ||--o{ USUARIO : "possui"
-    ESTABELECIMENTO ||--o{ MOTOBOY : "contrata"
     ESTABELECIMENTO ||--o{ DISTANCIA_PRECO : "define"
     ESTABELECIMENTO ||--o{ PEDIDO_EXTERNO : "recebe"
     ESTABELECIMENTO ||--o{ ENTREGA : "origina"
     ESTABELECIMENTO ||--o{ LOTE_ENTREGA : "opera"
     ESTABELECIMENTO ||--o{ RECIBO : "emite"
-    ESTABELECIMENTO ||--|| CONFIGURACAO_INTEGRACAO : "configura"
+    ESTABELECIMENTO ||--o{ CONFIGURACAO_INTEGRACAO : "configura"
 
     USUARIO ||--o| MOTOBOY : "credencia"
     USUARIO ||--o{ LOTE_ENTREGA : "despacha"
     USUARIO ||--o{ RECIBO : "gera"
+    USUARIO ||--o{ ENTREGA_STATUS_HISTORICO : "registra"
+    USUARIO ||--o{ ENTREGA_AJUSTE_VALOR : "ajusta"
 
     MOTOBOY ||--o{ LOTE_ENTREGA : "executa"
-    MOTOBOY ||--o{ POSICAO_GPS : "transmite"
     MOTOBOY ||--o{ RECIBO : "recebe"
 
-    PEDIDO_EXTERNO ||--o{ PEDIDO_EXTERNO_ITEM : "contem"
+    CONFIGURACAO_INTEGRACAO ||--o{ FALHA_INTEGRACAO : "reporta"
+
+    PEDIDO_EXTERNO ||--|{ ITEM_PEDIDO : "contem"
     PEDIDO_EXTERNO ||--o| ENTREGA : "gera"
 
     LOTE_ENTREGA ||--o{ ENTREGA : "agrupa"
     DISTANCIA_PRECO ||--o{ ENTREGA : "precifica"
     RECIBO ||--o{ ENTREGA : "consolida"
-    ENTREGA ||--o{ ENTREGA_STATUS_HISTORICO : "registra"
+    ENTREGA ||--o{ ENTREGA_STATUS_HISTORICO : "historia"
+    ENTREGA ||--o{ ENTREGA_AJUSTE_VALOR : "corrige"
 
     ESTABELECIMENTO {
         uuid id PK
@@ -534,7 +566,7 @@ erDiagram
         decimal latitude
         decimal longitude
         varchar status
-        int max_pedidos_por_lote
+        smallint max_pedidos_por_lote
         timestamp criado_em
     }
     USUARIO {
@@ -549,9 +581,9 @@ erDiagram
     }
     MOTOBOY {
         uuid id PK
-        uuid usuario_id FK
-        uuid estabelecimento_id FK
-        varchar cpf_criptografado UK
+        uuid usuario_id FK, UK
+        varchar cpf_criptografado
+        varchar cpf_hash UK
         varchar telefone
         varchar placa_veiculo
         varchar status_cadastro
@@ -559,26 +591,28 @@ erDiagram
         decimal ultima_latitude
         decimal ultima_longitude
         timestamp ultima_posicao_em
-    }
-    POSICAO_GPS {
-        bigint id PK
-        uuid motoboy_id FK
-        decimal latitude
-        decimal longitude
-        smallint precisao_metros
-        timestamp registrado_em
+        timestamp consentimento_lgpd_em
+        varchar consentimento_lgpd_versao
     }
     CONFIGURACAO_INTEGRACAO {
         uuid id PK
         uuid estabelecimento_id FK
         varchar provedor
         varchar merchant_id
-        varchar client_id
-        varchar client_secret_criptografado
-        varchar access_token
-        timestamp token_expira_em
         boolean ativo
         timestamp ultimo_polling_em
+    }
+    FALHA_INTEGRACAO {
+        bigint id PK
+        uuid configuracao_integracao_id FK
+        varchar id_externo
+        varchar etapa
+        text mensagem_erro
+        smallint tentativas
+        jsonb payload_json
+        varchar status
+        timestamp ocorrido_em
+        timestamp resolvido_em
     }
     PEDIDO_EXTERNO {
         uuid id PK
@@ -599,14 +633,15 @@ erDiagram
         jsonb payload_json
         timestamp recebido_em
         timestamp processado_em
+        timestamp atualizado_em
     }
-    PEDIDO_EXTERNO_ITEM {
-        uuid id PK
+    ITEM_PEDIDO {
+        bigint id PK
         uuid pedido_externo_id FK
-        varchar nome_item
-        int quantidade
+        varchar descricao
+        smallint quantidade
         decimal valor_unitario
-        text observacao
+        varchar observacao
     }
     ENTREGA {
         uuid id PK
@@ -615,6 +650,8 @@ erDiagram
         uuid lote_id FK
         uuid faixa_preco_id FK
         uuid recibo_id FK
+        varchar nome_cliente
+        varchar telefone_cliente
         varchar endereco_completo
         varchar bairro
         varchar cep
@@ -622,24 +659,41 @@ erDiagram
         varchar ponto_referencia
         decimal latitude
         decimal longitude
+        decimal valor_pedido
+        varchar forma_pagamento
+        boolean pago_online
+        decimal troco_para
+        text observacoes
         decimal distancia_km
         decimal valor_repasse
         varchar status
         varchar motivo_falha
+        boolean pendente_revisao
+        varchar motivo_revisao
         timestamp criada_em
         timestamp despachada_em
         timestamp saiu_para_entrega_em
         timestamp finalizada_em
+        timestamp atualizado_em
     }
     ENTREGA_STATUS_HISTORICO {
         bigint id PK
         uuid entrega_id FK
         varchar status_anterior
         varchar status_novo
-        uuid registrado_por_usuario_id
+        uuid registrado_por_usuario_id FK
         decimal latitude
         decimal longitude
         timestamp registrado_em
+    }
+    ENTREGA_AJUSTE_VALOR {
+        bigint id PK
+        uuid entrega_id FK
+        uuid usuario_id FK
+        decimal valor_anterior
+        decimal valor_novo
+        varchar motivo
+        timestamp ajustado_em
     }
     LOTE_ENTREGA {
         uuid id PK
@@ -647,11 +701,12 @@ erDiagram
         uuid motoboy_id FK
         uuid usuario_despachante_id FK
         varchar status
-        int qtd_entregas
+        smallint qtd_entregas
         decimal valor_total_repasse
         timestamp criado_em
         timestamp despachado_em
         timestamp concluido_em
+        timestamp atualizado_em
     }
     DISTANCIA_PRECO {
         uuid id PK
@@ -670,11 +725,12 @@ erDiagram
         date data_referencia
         timestamp periodo_inicio
         timestamp periodo_fim
-        int qtd_entregas
+        smallint qtd_entregas
         decimal valor_total
         varchar status
         timestamp gerado_em
         timestamp pago_em
+        timestamp atualizado_em
     }
 ```
 
@@ -716,39 +772,47 @@ erDiagram
 | ----- | ----- | ----- | ----- |
 | id | UUID | PK | Identificador |
 | usuario_id | UUID | FK, NOT NULL, UNIQUE | Vínculo que permite o login no aplicativo (HU09) |
-| estabelecimento_id | UUID | FK, NOT NULL | Isolamento: o entregador só vê as entregas da sua loja |
-| cpf_criptografado | VARCHAR(255) | NOT NULL, UNIQUE | CPF cifrado em repouso (RNF02, RNF07) |
+| cpf_criptografado | VARCHAR(255) | NOT NULL | CPF cifrado em repouso com AES-GCM (IV aleatório), recuperável apenas pela aplicação (RNF02, RNF07) |
+| cpf_hash | VARCHAR(64) | NOT NULL, UNIQUE | Índice cego: HMAC-SHA256 do CPF com chave secreta. Garante a unicidade (UC05 E2), já que o valor cifrado muda a cada gravação e não pode ser comparado |
 | telefone | VARCHAR(15) | NOT NULL | Contato |
 | placa_veiculo | VARCHAR(8) | | Identificação do veículo |
 | status_cadastro | VARCHAR(10) | NOT NULL, CHECK IN (ATIVO, BLOQUEADO) | Bloqueio impede receber lotes |
 | status_disponibilidade | VARCHAR(10) | NOT NULL, CHECK IN (OFFLINE, ONLINE, EM_ROTA) | Apenas ONLINE recebe despacho |
 | ultima_latitude, ultima_longitude | DECIMAL(10,7) | | Última posição, para carga inicial do mapa |
 | ultima_posicao_em | TIMESTAMP | | Base do alerta de entregador sem transmitir |
+| consentimento_lgpd_em | TIMESTAMP | | Momento do aceite do termo no primeiro acesso ao aplicativo; nulo impede ficar ONLINE (RNF07) |
+| consentimento_lgpd_versao | VARCHAR(10) | | Versão do termo aceito; nova versão exige novo aceite |
 
-**POSICAO_GPS** — histórico de telemetria (RF04). Índice em (motoboy_id, registrado_em).
+> O nome do entregador é mantido apenas em USUARIO.nome, evitando duplicidade.
 
-| Coluna | Tipo | Restrições | Descrição |
-| ----- | ----- | ----- | ----- |
-| id | BIGSERIAL | PK | Identificador sequencial, dado o volume |
-| motoboy_id | UUID | FK, NOT NULL | Entregador |
-| latitude, longitude | DECIMAL(10,7) | NOT NULL | Coordenada capturada |
-| precisao_metros | SMALLINT | | Precisão reportada pelo aparelho |
-| registrado_em | TIMESTAMP | NOT NULL | Horário do evento no aparelho, preservado na sincronização offline (RNF09). Expurgo após 90 dias (RNF07) |
 
-**CONFIGURACAO_INTEGRACAO** — credenciais do provedor por estabelecimento.
+**CONFIGURACAO_INTEGRACAO** — vínculo de cada estabelecimento com sua loja no provedor.
 
 | Coluna | Tipo | Restrições | Descrição |
 | ----- | ----- | ----- | ----- |
 | id | UUID | PK | Identificador |
-| estabelecimento_id | UUID | FK, NOT NULL, UNIQUE (com provedor) | Loja |
+| estabelecimento_id | UUID | FK, NOT NULL, UNIQUE (com provedor) | Loja. Relação 1:N opcional: a loja pode não ter integração (apenas entregas avulsas) ou ter uma por provedor |
 | provedor | VARCHAR(20) | NOT NULL, CHECK IN (IFOOD, SIMULADOR) | Provedor configurado |
-| merchant_id | VARCHAR(100) | NOT NULL | Identificador da loja no provedor |
-| client_id | VARCHAR(255) | NOT NULL | Credencial de aplicação |
-| client_secret_criptografado | VARCHAR(500) | NOT NULL | Segredo cifrado em repouso |
-| access_token | VARCHAR(2000) | | Token corrente |
-| token_expira_em | TIMESTAMP | | Controle de renovação |
+| merchant_id | VARCHAR(100) | NOT NULL, UNIQUE (com provedor) | Identificador da loja no provedor; uma loja do provedor só pode estar vinculada a um estabelecimento |
 | ativo | BOOLEAN | NOT NULL | Liga/desliga o *polling* da loja |
 | ultimo_polling_em | TIMESTAMP | | Diagnóstico da integração |
+
+> **Credenciais do provedor:** no modelo de integração centralizada, o Agiliza Delivery é **uma única aplicação** cadastrada no Portal do Desenvolvedor do provedor, e cada restaurante autoriza essa aplicação a acessar a sua loja. Por isso, `client_id` e `client_secret` pertencem à aplicação, e não ao estabelecimento: ficam na configuração do servidor (variáveis de ambiente / cofre de segredos), nunca no banco. O *access token* é obtido com essas credenciais, mantido em memória e renovado antes de expirar; uma única consulta de eventos atende todas as lojas vinculadas, filtrando por `merchant_id`. *A confirmar na documentação vigente do Portal do Desenvolvedor iFood durante a Entrega 3.*
+
+**FALHA_INTEGRACAO** — fila de erro da integração (RNF04).
+
+| Coluna | Tipo | Restrições | Descrição |
+| ----- | ----- | ----- | ----- |
+| id | BIGSERIAL | PK | Identificador |
+| configuracao_integracao_id | UUID | FK, NOT NULL | Integração (e, por ela, a loja) em que a falha ocorreu |
+| id_externo | VARCHAR(100) | | Pedido afetado, quando identificável |
+| etapa | VARCHAR(20) | NOT NULL, CHECK IN (AUTENTICACAO, CONSULTA, CONFIRMACAO, GEOCODIFICACAO, PERSISTENCIA) | Passo do ciclo do *worker* que falhou (seção 1.5.6) |
+| mensagem_erro | TEXT | NOT NULL | Erro técnico retornado |
+| tentativas | SMALLINT | NOT NULL | Número de tentativas realizadas (máximo 5, RNF04) |
+| payload_json | JSONB | | Resposta recebida, quando houver, para reprocessamento |
+| status | VARCHAR(12) | NOT NULL, CHECK IN (PENDENTE, REPROCESSADA, DESCARTADA) | PENDENTE alimenta o alerta de integração degradada no painel |
+| ocorrido_em | TIMESTAMP | NOT NULL | Momento da última tentativa |
+| resolvido_em | TIMESTAMP | | Momento do reprocessamento ou descarte |
 
 **PEDIDO_EXTERNO** — cópia fiel do pedido recebido do provedor (RNF13).
 
@@ -773,17 +837,20 @@ erDiagram
 | payload_json | JSONB | NOT NULL | Resposta original da API, para auditoria e reprocessamento (RNF13) |
 | recebido_em | TIMESTAMP | NOT NULL | Momento da captura |
 | processado_em | TIMESTAMP | | Momento em que a ENTREGA correspondente foi criada |
+| atualizado_em | TIMESTAMP | | Última atualização do registro |
 
-**PEDIDO_EXTERNO_ITEM** — itens do pedido, exibidos ao operador e ao entregador para conferência.
+**ITEM_PEDIDO** — itens do pedido importado, para conferência da sacola (UC02).
 
 | Coluna | Tipo | Restrições | Descrição |
 | ----- | ----- | ----- | ----- |
-| id | UUID | PK | Identificador |
-| pedido_externo_id | UUID | FK, NOT NULL | Pedido |
-| nome_item | VARCHAR(200) | NOT NULL | Descrição do item |
-| quantidade | SMALLINT | NOT NULL | Quantidade |
-| valor_unitario | DECIMAL(10,2) | NOT NULL | Preço unitário |
-| observacao | TEXT | | Personalizações e adicionais |
+| id | BIGSERIAL | PK | Identificador |
+| pedido_externo_id | UUID | FK, NOT NULL | Pedido de origem |
+| descricao | VARCHAR(200) | NOT NULL | Nome do item no provedor |
+| quantidade | SMALLINT | NOT NULL, CHECK > 0 | Quantidade |
+| valor_unitario | DECIMAL(10,2) | | Preço unitário |
+| observacao | VARCHAR(255) | | Observação do cliente sobre o item |
+
+> Entregas avulsas não possuem ITEM_PEDIDO; as informações de conteúdo ficam em ENTREGA.observacoes.
 
 **ENTREGA** — unidade logística e de cobrança do repasse.
 
@@ -795,14 +862,24 @@ erDiagram
 | lote_id | UUID | FK, NULL | Nulo enquanto AGUARDANDO_DESPACHO |
 | faixa_preco_id | UUID | FK, NULL | Faixa aplicada; preenchida no cálculo |
 | recibo_id | UUID | FK, NULL | Preenchido no acerto; quando não nulo, o valor torna-se imutável (HU07) |
+| nome_cliente | VARCHAR(120) | NOT NULL | Destinatário; copiado do PEDIDO_EXTERNO ou digitado na entrega avulsa |
+| telefone_cliente | VARCHAR(20) | | Base do deep link de WhatsApp (HU04) |
 | endereco_completo | VARCHAR(255) | NOT NULL | Endereço do cliente |
 | bairro, cep, complemento, ponto_referencia | VARCHAR | | Apoio ao entregador em campo |
-| latitude, longitude | DECIMAL(10,7) | NOT NULL | Coordenada efetivamente usada, já com eventual ajuste manual do operador (R04) |
-| distancia_km | DECIMAL(6,2) | | Distância loja → cliente, base da faixa |
-| valor_repasse | DECIMAL(10,2) | | Valor devido ao entregador por esta entrega |
+| latitude, longitude | DECIMAL(10,7) | | Coordenada efetivamente usada, já com eventual ajuste manual do operador (R04). Nula apenas enquanto `pendente_revisao` = true por falha de geocodificação |
+| valor_pedido | DECIMAL(10,2) | | Total do pedido |
+| forma_pagamento | VARCHAR(30) | | DINHEIRO, CREDITO, DEBITO, PIX, VALE |
+| pago_online | BOOLEAN | NOT NULL, DEFAULT false | Indica se há valor a receber na porta |
+| troco_para | DECIMAL(10,2) | | Valor para o qual o cliente pediu troco |
+| observacoes | TEXT | | Observações do cliente ou do operador |
+| distancia_km | DECIMAL(6,2) | | Distância de rota loja → cliente, obtida pela API de rotas; base da faixa |
+| valor_repasse | DECIMAL(10,2) | | Valor devido ao entregador por esta entrega; provisório até o estado final (seção 1.5.5) |
 | status | VARCHAR(25) | NOT NULL | Conforme a máquina de estados da seção 1.4.4 |
 | motivo_falha | VARCHAR(100) | | Obrigatório quando status = FALHA |
+| pendente_revisao | BOOLEAN | NOT NULL, DEFAULT false | Entrega sem coordenada válida (UC01 A1), sem distância calculada ou sem faixa correspondente (seção 1.5.5, passos 1 e 3). Bloqueia a inclusão em recibo |
+| motivo_revisao | VARCHAR(30) | CHECK IN (SEM_COORDENADA, SEM_DISTANCIA, SEM_FAIXA) | Causa da revisão pendente |
 | criada_em, despachada_em, saiu_para_entrega_em, finalizada_em | TIMESTAMP | | Tempos operacionais exigidos pelo RF01 |
+| atualizado_em | TIMESTAMP | | Última atualização do registro |
 
 **ENTREGA_STATUS_HISTORICO** — trilha de auditoria de cada transição.
 
@@ -816,6 +893,18 @@ erDiagram
 | latitude, longitude | DECIMAL(10,7) | | Onde o entregador estava ao registrar |
 | registrado_em | TIMESTAMP | NOT NULL | Horário do evento na origem |
 
+**ENTREGA_AJUSTE_VALOR** — trilha de auditoria dos ajustes manuais de repasse (UC03 A1).
+
+| Coluna | Tipo | Restrições | Descrição |
+| ----- | ----- | ----- | ----- |
+| id | BIGSERIAL | PK | Identificador |
+| entrega_id | UUID | FK, NOT NULL | Entrega ajustada; deve ter `recibo_id` nulo no momento do ajuste |
+| usuario_id | UUID | FK, NOT NULL | Autor do ajuste |
+| valor_anterior | DECIMAL(10,2) | NOT NULL | Valor antes do ajuste |
+| valor_novo | DECIMAL(10,2) | NOT NULL, CHECK ≥ 0 | Valor após o ajuste |
+| motivo | VARCHAR(255) | NOT NULL | Justificativa obrigatória |
+| ajustado_em | TIMESTAMP | NOT NULL | Momento do ajuste |
+
 **LOTE_ENTREGA** — agrupamento de entregas despachado a um entregador.
 
 | Coluna | Tipo | Restrições | Descrição |
@@ -825,9 +914,10 @@ erDiagram
 | motoboy_id | UUID | FK, NOT NULL | Executor |
 | usuario_despachante_id | UUID | FK, NOT NULL | Operador que despachou |
 | status | VARCHAR(15) | NOT NULL | Conforme a seção 1.4.4 |
-| qtd_entregas | SMALLINT | NOT NULL, CHECK ≤ max_pedidos_por_lote da loja | Regra da HU02 |
+| qtd_entregas | SMALLINT | NOT NULL, CHECK > 0 | O limite `≤ ESTABELECIMENTO.max_pedidos_por_lote` (HU02) é validado na camada de serviço e reforçado por *trigger*, pois um CHECK não pode consultar outra tabela |
 | valor_total_repasse | DECIMAL(10,2) | | Soma do valor_repasse das entregas |
 | criado_em, despachado_em, concluido_em | TIMESTAMP | | Tempos do lote |
+| atualizado_em | TIMESTAMP | | Última atualização do registro |
 
 **DISTANCIA_PRECO** — faixas de preço por distância, próprias de cada loja.
 
@@ -841,7 +931,7 @@ erDiagram
 | ativo | BOOLEAN | NOT NULL | Faixas substituídas são inativadas, nunca excluídas |
 | vigente_desde | DATE | NOT NULL | Preserva o histórico para auditoria de recibos antigos |
 
-> **Regra de integridade:** para um mesmo `estabelecimento_id` com `ativo = true`, não pode haver interseção entre os intervalos `[de_km, ate_km)`. No PostgreSQL, isso é garantível por uma constraint `EXCLUDE USING gist` sobre o intervalo numérico, além da validação na camada de serviço (UC05, exceção E1).
+> **Regras de integridade:** (1) **sem sobreposição** — para um mesmo `estabelecimento_id` com `ativo = true`, não pode haver interseção entre os intervalos `[de_km, ate_km)`; no PostgreSQL, isso é garantido por uma constraint `EXCLUDE USING gist` sobre o intervalo numérico (UC05, exceção E1). (2) **sem lacunas** — as faixas ativas devem começar em 0 km e ser contíguas (o `ate_km` de uma é o `de_km` da seguinte). Essa regra não é expressável por constraint e é validada na camada de serviço, que grava a tabela inteira de uma loja em uma única transação.
 
 **RECIBO** — comprovante do acerto financeiro (HU07).
 
@@ -858,6 +948,7 @@ erDiagram
 | status | VARCHAR(10) | NOT NULL, CHECK IN (GERADO, PAGO, CANCELADO) | Conforme a seção 1.4.4 |
 | gerado_em | TIMESTAMP | NOT NULL | Emissão |
 | pago_em | TIMESTAMP | | Confirmação do PIX pelo operador |
+| atualizado_em | TIMESTAMP | | Última atualização do registro |
 
 ### 1.5.5. Regra de Precificação e Cálculo do Repasse
 
@@ -865,12 +956,14 @@ O repasse é apurado **por entrega**, nunca por lote. O agrupamento em lote é u
 
 **Algoritmo**
 
-1. Ao importar ou cadastrar a entrega, o sistema obtém a coordenada do cliente e calcula `distancia_km` entre a loja e o cliente pela fórmula de Haversine.
-2. O sistema localiza a faixa ativa do estabelecimento em que `de_km ≤ distancia_km < ate_km` e grava `faixa_preco_id` e `valor_repasse = DISTANCIA_PRECO.valor_pago`.
-3. Se nenhuma faixa corresponder à distância, a entrega é marcada para revisão e o operador é notificado; o despacho é permitido, mas o acerto exige a definição da faixa.
-4. Quando a entrega atinge estado final (ENTREGUE ou FALHA), `valor_repasse` e `faixa_preco_id` são congelados. Alterações posteriores na tabela de preços não afetam entregas já finalizadas (HU10).
-5. `LOTE_ENTREGA.valor_total_repasse` é a soma do `valor_repasse` das suas entregas.
-6. `RECIBO.valor_total` é a soma do `valor_repasse` das entregas do período ainda não vinculadas a nenhum recibo.
+1. Ao importar ou cadastrar a entrega, o sistema obtém a coordenada do cliente e consulta a API de rotas (Google Maps Platform) para obter `distancia_km`: a distância do **percurso viário** entre a coordenada da loja e a do cliente. Se o operador ajustar o pino, a distância é recalculada. Se a API estiver indisponível ou não retornar rota, a entrega recebe `pendente_revisao = true` (motivo SEM_DISTANCIA) e o operador é notificado.
+2. O sistema localiza a faixa ativa do estabelecimento em que `de_km ≤ distancia_km < ate_km` e grava `faixa_preco_id` e `valor_repasse = DISTANCIA_PRECO.valor_pago`. Esse valor é **provisório**: serve para exibição no painel e no aplicativo enquanto a entrega está em andamento.
+3. Se nenhuma faixa corresponder à distância, a entrega recebe `pendente_revisao = true` (motivo SEM_FAIXA) e o operador é notificado; o despacho é permitido, mas a entrega só pode entrar em recibo após a revisão.
+4. **Congelamento:** quando a entrega atinge ENTREGUE ou FALHA, o sistema reaplica a faixa **ativa naquele momento** e grava definitivamente `faixa_preco_id` e `valor_repasse`. Assim, uma alteração na tabela de preços vale para todas as entregas ainda não finalizadas, inclusive as já importadas, e nunca afeta entregas finalizadas (HU10).
+5. **Entrega cancelada:** se o cancelamento ocorrer antes da saída da loja (a partir de AGUARDANDO_DESPACHO ou DESPACHADA), a entrega recebe `valor_repasse = 0` e `faixa_preco_id` nulo, pois não houve deslocamento. Se ocorrer durante o percurso (a partir de EM_ROTA, UC02 A3), o repasse é **integral** e congelado como no passo 4, pois o entregador já se deslocou e precisa retornar à loja.
+6. **Ajuste manual:** "congelado" significa imune a mudanças na tabela de preços, não imune a correções. Enquanto `recibo_id` for nulo, o operador pode ajustar `valor_repasse` com motivo obrigatório, e cada ajuste é registrado em ENTREGA_AJUSTE_VALOR (UC03 A1). Após a vinculação a um recibo, o valor é imutável (HU07); a única forma de corrigi-lo é cancelar o recibo, o que libera as entregas.
+7. `LOTE_ENTREGA.valor_total_repasse` é a soma do `valor_repasse` das suas entregas.
+8. `RECIBO.valor_total` é a soma do `valor_repasse` das entregas do período em estado final, sem revisão pendente e ainda não vinculadas a nenhum recibo.
 
 **Tratamento da entrega com falha:** uma entrega em FALHA gera repasse **integral** da faixa correspondente, pois o entregador percorreu o trajeto de ida e de volta. O motivo da falha é obrigatório e fica registrado para análise gerencial.
 
@@ -885,15 +978,15 @@ O repasse é apurado **por entrega**, nunca por lote. O agrupamento em lote é u
 
 ### 1.5.6. Integração com Provedores de Pedidos
 
-A integração é isolada atrás da interface `ProvedorDePedidos`, com duas implementações: `IFoodAdapter`, que consome a API oficial, e `SimuladorAdapter`, que gera pedidos sintéticos no mesmo contrato. Isso mitiga o risco R01: o desenvolvimento das entregas 4 a 8 não fica bloqueado pela homologação junto ao iFood.
+A integração é isolada atrás da interface `ProvedorDePedidos`, com duas implementações: `IFoodAdapter`, que consome a API oficial, e `SimuladorAdapter`, que gera pedidos sintéticos no mesmo contrato. Isso mitiga o risco R01: a Entrega 3 e todas as seguintes podem ser concluídas sem depender da homologação junto ao iFood.
 
 **Ciclo do *worker***
 
-1. A cada 30 segundos, para cada `CONFIGURACAO_INTEGRACAO` ativa, o *worker* consulta os eventos de novos pedidos do provedor.
+1. A cada 30 segundos, o *worker* garante um *access token* válido da aplicação e consulta os eventos de novos pedidos do provedor para os `merchant_id` das `CONFIGURACAO_INTEGRACAO` ativas.
 2. Para cada pedido retornado, verifica a existência do par (`provedor`, `id_externo`). Se já existir, descarta — é a garantia de idempotência exigida pela HU03.
-3. Persiste `PEDIDO_EXTERNO` com o `payload_json` íntegro (RNF13) e os respectivos `PEDIDO_EXTERNO_ITEM`.
+3. Persiste `PEDIDO_EXTERNO` com o `payload_json` íntegro (RNF13) e seus `ITEM_PEDIDO`.
 4. Confirma o recebimento ao provedor, quando o protocolo exigir.
-5. Geocodifica o endereço, calcula a distância, aplica a faixa e cria a `ENTREGA` com status AGUARDANDO_DESPACHO, preenchendo `processado_em`.
+5. Geocodifica o endereço, calcula a distância, aplica a faixa e cria a `ENTREGA` com status AGUARDANDO_DESPACHO, copiando os dados do cliente e do pagamento e preenchendo `processado_em`.
 6. Publica o evento no WebSocket para que o pino apareça no painel de despacho.
 
 **Dados capturados do provedor e sua finalidade**
@@ -908,7 +1001,7 @@ A integração é isolada atrás da interface `ProvedorDePedidos`, com duas impl
 | Status no provedor | Detecção de cancelamentos posteriores à importação |
 | Payload bruto (JSON) | Auditoria e reprocessamento (RNF13) |
 
-**Falhas:** aplica-se o RNF04 — repetição com recuo exponencial por até 5 tentativas; após isso, o registro vai para a fila de erro e o painel exibe o alerta de integração degradada, sem interromper o ciclo.
+**Falhas:** aplica-se o RNF04 — repetição com recuo exponencial por até 5 tentativas; após isso, a falha é gravada em `FALHA_INTEGRACAO` com status PENDENTE (fila de erro) e o painel exibe o alerta de integração degradada, sem interromper o ciclo.
 
 ---
 
@@ -923,7 +1016,7 @@ A integração é isolada atrás da interface `ProvedorDePedidos`, com duas impl
 
 ## 2.2. Cronograma de Codificação do Projeto
 
-Codificação iniciada em 21/09/2026, com entregas semanais às sextas-feiras.
+Codificação iniciada em 21/09/2026, com entregas semanais às sextas-feiras. A Entrega 9 é antecipada para a terça-feira, 17/11/2026, data-limite do prazo acadêmico (seção 1.2.5).
 
 | Data | Entrega | Descrição |
 | :---: | ----- | ----- |
@@ -931,8 +1024,8 @@ Codificação iniciada em 21/09/2026, com entregas semanais às sextas-feiras.
 | 02/10/2026 | Entrega 2 – Autenticação e perfis (API) | Login com token JWT via Spring Security, autorização por perfil, filtro de estabelecimento e endpoints de CRUD de usuários, entregadores e restaurantes. |
 | 09/10/2026 | Entrega 3 – Integração e *worker* de pedidos | Interface `ProvedorDePedidos`, `SimuladorAdapter`, `IFoodAdapter`, ciclo de *polling* com idempotência e persistência de PEDIDO_EXTERNO e seus itens. |
 | 16/10/2026 | Entrega 4 – Painel de retaguarda (React) | Aplicação Web, consumo da API interna e listagem tabular dos pedidos capturados aguardando ação. |
-| 23/10/2026 | Entrega 5 – Aplicativo do entregador (Flutter) | Tela de login, interface principal do entregador e listagem dos lotes atribuídos a ele. |
+| 23/10/2026 | Entrega 5 – Aplicativo do entregador (Flutter) | Tela de login, interface principal do entregador e listagem dos lotes atribuídos a ele, alimentada por um endpoint de teste (*seed*) que cria lotes até o despacho real existir na Entrega 6. Protótipo de captura de GPS em segundo plano (*foreground service*) validado em aparelho físico, antecipando o risco R02. |
 | 30/10/2026 | Entrega 6 – Mapa, WebSocket e despacho | Mapa interativo no React, agrupamento de pedidos em lote e comunicação em tempo real com o aplicativo. |
 | 06/11/2026 | Entrega 7 – Telemetria GPS e status em campo | Captura de GPS em segundo plano no Flutter, fila offline, deep links e botões de status refletindo no painel Web. |
 | 13/11/2026 | Entrega 8 – Acerto financeiro e fechamento do MVP | Tabela de faixas de preço, cálculo automático do repasse, extrato do turno e geração do recibo. Conclusão do MVP. |
-| 20/11/2026 | Entrega 9 – Testes, documentação e apresentação | Testes integrados dos fluxos principais, revisão final da documentação e preparação da apresentação. |
+| 17/11/2026 | Entrega 9 – Testes, documentação e apresentação | Testes integrados dos fluxos principais, revisão final da documentação e preparação da apresentação. |
