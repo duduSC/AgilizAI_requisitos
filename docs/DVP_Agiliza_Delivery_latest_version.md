@@ -19,6 +19,7 @@ Eduardo dos Santos de Camargo
 | 2.4 | Ajustes decorrentes da implementação da camada de persistência: MOTOBOY deixa de ter FK própria para ESTABELECIMENTO, alcançado pelo USUARIO; padronização das datas de controle (`criado_em` e `atualizado_em`) em todas as entidades com PK UUID; campos de domínio fechado passam de VARCHAR com CHECK para tipo ENUM; inclusão das convenções gerais no dicionário de dados | Eduardo S.C | 02/10/2026 |
 | 2.5 | Revisão do modelo do entregador: MOTOBOY deixa de ter `nome`, que passa a existir apenas em USUARIO; remoção dos campos de consentimento LGPD, substituídos pela base legal de execução do contrato de trabalho (RNF07 reescrito, UC07 A1 removido) | Eduardo S.C | 03/10/2026 |
 | 2.6 | Introdução do **CAIXA**: o limite para correções passa a ser o fechamento do expediente, e não o pagamento do recibo. Recibos pagos podem ser cancelados e refeitos enquanto o caixa estiver aberto; o Administrador do Restaurante pode reabrir um caixa fechado mediante justificativa (UC03 A3) | Eduardo S.C | 03/10/2026 |
+| 2.7 | Entregas fora do raio passam a usar um valor de repasse configurado na loja, em vez de travar em revisão; o entregador ganha o UC08 – Acompanhar Acerto, com contestação de valores pelo aplicativo (HU14); MotivoRevisao troca SEM_FAIXA por CONTESTACAO_ENTREGADOR | Eduardo S.C | 05/10/2026 |
 
 ---
 
@@ -120,6 +121,7 @@ O sistema é **multilocatário (multi-tenant)**: uma mesma instalação atende d
 - Aplicativo para iOS.
 - Chat interno entre operador e entregador (o MVP usa deep link para o WhatsApp).
 - Avaliação e ranqueamento de entregadores.
+- Trilha completa da contestação (entidade própria, com justificativa do entregador, resposta do operador e histórico de cada reclamação). No MVP a contestação apenas marca a entrega para revisão, e a conversa entre entregador e operador acontece fora do sistema.
 - Relatórios analíticos avançados e BI; o MVP entrega apenas o extrato e o recibo de acerto.
 - Integração com outros provedores além do iFood (a arquitetura prevê a extensão, mas somente o iFood é implementado).
 
@@ -258,6 +260,7 @@ O diagrama apresentado abaixo contempla todos os casos de uso definidos para a s
 | UC05 – Configurar Estabelecimento e Frota | Administrador do Restaurante | — |
 | UC06 – Gerenciar Restaurantes | Administrador Geral | — |
 | UC07 – Autenticar-se | Administrador Geral, Administrador do Restaurante, Operador de Logística, Entregador | — |
+| UC08 – Acompanhar Acerto | Entregador | Operador de Logística |
 
 > O UC07 é incluído (*include*) por todos os demais casos de uso, que o têm como pré-condição.
 
@@ -338,6 +341,18 @@ O diagrama apresentado abaixo contempla todos os casos de uso definidos para a s
 | **Fluxos alternativos** | **A1 – Token expirado:** a requisição é recusada e o cliente redireciona para nova autenticação. |
 | **Fluxos de exceção** | **E1 – Credenciais inválidas:** o sistema recusa com mensagem genérica, sem indicar se o erro está no e-mail ou na senha. **E2 – Estabelecimento INATIVO:** o sistema recusa e informa que o acesso da loja está suspenso (HU12). **E3 – Usuário inativo ou entregador BLOQUEADO:** o sistema recusa o acesso. **E4 – Perfil incompatível com o cliente:** um usuário ENTREGADOR não acessa o Backoffice, e os demais perfis não acessam o aplicativo. |
 | **Pós-condições** | Usuário autenticado com token válido; todas as consultas operacionais passam a ser filtradas pelo seu estabelecimento. |
+
+#### 1.4.2.8. UC08 – Acompanhar Acerto
+
+| | |
+| ----- | ----- |
+| **Ator principal** | Entregador |
+| **Atores secundários** | Operador de Logística |
+| **Pré-condições** | O entregador está autenticado e possui entregas concluídas no período. |
+| **Fluxo principal** | 1. O entregador abre a tela de acerto no aplicativo. 2. O sistema lista as entregas concluídas do período, cada uma com a distância, a faixa aplicada e o valor do repasse. 3. O sistema apresenta o total acumulado e indica o que já está consolidado em recibo. 4. O entregador acompanha o valor crescer ao longo do turno. |
+| **Fluxos alternativos** | **A1 – Contestar valor:** ao discordar do valor de uma entrega, o entregador aciona "Contestar". A entrega recebe `pendente_revisao = true` com motivo CONTESTACAO_ENTREGADOR, sai do cálculo do acerto e é sinalizada no painel do operador, que a analisa e, se procedente, ajusta o valor pelo UC03 A1. |
+| **Fluxos de exceção** | **E1 – Entrega já em revisão:** o sistema informa que a entrega já está sob análise e não registra nova contestação. **E2 – Caixa fechado:** encerrado o expediente, os valores tornam-se imutáveis e o botão de contestar fica indisponível; o entregador é orientado a procurar o operador. |
+| **Pós-condições** | Entrega marcada para revisão e fora do cálculo do acerto até a análise do operador. |
 
 ### 1.4.3. Histórias de Usuário Por Caso de Uso
 
@@ -448,6 +463,17 @@ O diagrama apresentado abaixo contempla todos os casos de uso definidos para a s
 **Regras de Negócio:** A senha é validada contra o hash BCrypt (RNF02). O token JWT carrega o perfil e o estabelecimento, e todas as consultas operacionais são filtradas por esse estabelecimento. O acesso é negado a usuários inativos, a entregadores BLOQUEADOS e a usuários de estabelecimentos INATIVOS (HU12). A mensagem de erro de credenciais é genérica.
 **Critérios de Aceite:** Dado que um operador da "Pizzaria XYZ" está autenticado, Quando ele consultar as entregas pendentes, Então o sistema exibirá apenas as entregas da "Pizzaria XYZ"; E uma tentativa de acessar por URL uma entrega de outro estabelecimento será recusada.
 
+#### 1.4.3.8. UC08 – Acompanhar Acerto
+
+| Objetivo: | Dar ao entregador visibilidade do próprio ganho durante o turno e um caminho formal para questionar valores. |
+| ----- | :---- |
+| **HISTÓRIAS DE USUÁRIOS** | |
+
+**História: HU14 – Acompanhar o acerto e contestar valores**
+**Descrição:** COMO Entregador, QUERO acompanhar pelo aplicativo as entregas que fiz e quanto vou receber por cada uma PARA conferir o acerto antes do pagamento e questionar o que estiver errado.
+**Regras de Negócio:** O entregador enxerga apenas as suas próprias entregas, do estabelecimento ao qual está vinculado. Cada linha mostra a distância, a faixa aplicada e o valor. Entregas fora do raio aparecem com o valor de fora de área. A contestação só é possível enquanto o caixa do dia estiver aberto; uma vez contestada, a entrega fica pendente de revisão e sai do total até que o operador a analise.
+**Critérios de Aceite:** Dado que o entregador concluiu uma entrega de 6 km que apareceu com o valor de uma faixa menor, Quando ele abrir a tela de acerto e tocar em "Contestar", Então a entrega é marcada para revisão, deixa de somar no total exibido e passa a ser sinalizada no painel do operador.
+
 ### 1.4.4. Máquina de Estados dos Objetos de Negócio
 
 Os status citados nas histórias de usuário são definidos formalmente abaixo. Nenhum outro valor é admitido.
@@ -481,7 +507,7 @@ Os status citados nas histórias de usuário são definidos formalmente abaixo. 
 | :---: | ----- | ----- | ----- | ----- |
 | RF01 | UC01 – Gerenciar Fluxo de Entregas | HU01, HU02, HU03 | RNF03, RNF04, RNF06, RNF13 | PEDIDO_EXTERNO, ITEM_PEDIDO, ENTREGA, LOTE_ENTREGA, FALHA_INTEGRACAO |
 | RF02 | UC02 – Executar Lote de Entrega | HU04, HU05 | RNF06, RNF09, RNF10, RNF11 | LOTE_ENTREGA, ENTREGA, ENTREGA_STATUS_HISTORICO |
-| RF03 | UC03 – Fechar Acerto Financeiro; UC05 – Configurar Estabelecimento e Frota (faixas de preço) | HU06, HU07, HU10 | RNF03 | DISTANCIA_PRECO, ENTREGA, ENTREGA_AJUSTE_VALOR, RECIBO |
+| RF03 | UC03 – Fechar Acerto Financeiro; UC05 – Configurar Estabelecimento e Frota (faixas de preço); UC08 – Acompanhar Acerto | HU06, HU07, HU10, HU14 | RNF03, RNF11 | DISTANCIA_PRECO, ENTREGA, ENTREGA_AJUSTE_VALOR, RECIBO, CAIXA |
 | RF04 | UC04 – Monitorar Logística em Tempo Real | HU08 | RNF01, RNF06, RNF07, RNF09 | MOTOBOY, ENTREGA_STATUS_HISTORICO |
 | RF05 | UC05 – Configurar Estabelecimento e Frota; UC07 – Autenticar-se | HU09, HU13 | RNF02, RNF05, RNF07 | USUARIO, MOTOBOY, CONFIGURACAO_INTEGRACAO |
 | RF06 | UC06 – Gerenciar Restaurantes | HU11, HU12 | RNF02, RNF08, RNF12 | ESTABELECIMENTO, USUARIO |
@@ -581,6 +607,7 @@ erDiagram
         decimal longitude
         varchar status
         smallint max_pedidos_por_lote
+        decimal valor_repasse_fora_de_area
         timestamp criado_em
         timestamp atualizado_em
     }
@@ -796,6 +823,7 @@ erDiagram
 | latitude, longitude | DECIMAL(10,7) | NOT NULL | Origem de todos os cálculos de distância |
 | status | ENUM (ATIVO, INATIVO) | NOT NULL | Controla o login de toda a loja (HU12) |
 | max_pedidos_por_lote | SMALLINT | NOT NULL, DEFAULT 5 | Limite parametrizável da HU02 |
+| valor_repasse_fora_de_area | DECIMAL(10,2) | | Repasse aplicado quando a distância ultrapassa a última faixa da loja, isto é, quando o cliente está fora do raio de entrega (seção 1.5.5, passo 3) |
 | criado_em, atualizado_em | TIMESTAMP | NOT NULL / NULL | Datas de controle padrão (ver nota ao final da seção) |
 
 **USUARIO** — credencial de acesso de qualquer perfil.
@@ -922,7 +950,7 @@ erDiagram
 | status | ENUM (AGUARDANDO_DESPACHO, DESPACHADA, EM_ROTA, ENTREGUE, FALHA, CANCELADA) | NOT NULL | Conforme a máquina de estados da seção 1.4.4 |
 | motivo_falha | VARCHAR(100) | | Obrigatório quando status = FALHA |
 | pendente_revisao | BOOLEAN | NOT NULL, DEFAULT false | Entrega sem coordenada válida (UC01 A1), sem distância calculada ou sem faixa correspondente (seção 1.5.5, passos 1 e 3). Bloqueia a inclusão em recibo |
-| motivo_revisao | ENUM (SEM_COORDENADA, SEM_DISTANCIA, SEM_FAIXA) | | Causa da revisão pendente |
+| motivo_revisao | ENUM (SEM_COORDENADA, SEM_DISTANCIA, CONTESTACAO_ENTREGADOR) | | Causa da revisão pendente |
 | despachada_em, saiu_para_entrega_em, finalizada_em | TIMESTAMP | | Tempos operacionais exigidos pelo RF01 |
 | criado_em, atualizado_em | TIMESTAMP | NOT NULL / NULL | Datas de controle padrão (ver nota ao final da seção) |
 
@@ -1024,12 +1052,12 @@ O repasse é apurado **por entrega**, nunca por lote. O agrupamento em lote é u
 
 1. Ao importar ou cadastrar a entrega, o sistema obtém a coordenada do cliente e consulta a API de rotas (Google Maps Platform) para obter `distancia_km`: a distância do **percurso viário** entre a coordenada da loja e a do cliente. Se o operador ajustar o pino, a distância é recalculada. Se a API estiver indisponível ou não retornar rota, a entrega recebe `pendente_revisao = true` (motivo SEM_DISTANCIA) e o operador é notificado.
 2. O sistema localiza a faixa ativa do estabelecimento em que `de_km ≤ distancia_km < ate_km` e grava `faixa_preco_id` e `valor_repasse = DISTANCIA_PRECO.valor_pago`. Esse valor é **provisório**: serve para exibição no painel e no aplicativo enquanto a entrega está em andamento.
-3. Se nenhuma faixa corresponder à distância, a entrega recebe `pendente_revisao = true` (motivo SEM_FAIXA) e o operador é notificado; o despacho é permitido, mas a entrega só pode entrar em recibo após a revisão.
+3. **Fora do raio de entrega:** se a distância ultrapassar a última faixa da loja, aplica-se `ESTABELECIMENTO.valor_repasse_fora_de_area`, com `faixa_preco_id` nulo, e a entrega segue o fluxo normalmente, sem pendência de revisão. Entregas distantes são parte da operação, não uma exceção a ser resolvida manualmente. Caso a loja não tenha esse valor configurado, a entrega é despachada e o operador é alertado para defini-lo antes do acerto.
 4. **Congelamento:** quando a entrega atinge ENTREGUE ou FALHA, o sistema reaplica a faixa **ativa naquele momento** e grava definitivamente `faixa_preco_id` e `valor_repasse`. Assim, uma alteração na tabela de preços vale para todas as entregas ainda não finalizadas, inclusive as já importadas, e nunca afeta entregas finalizadas (HU10).
 5. **Entrega cancelada:** se o cancelamento ocorrer antes da saída da loja (a partir de AGUARDANDO_DESPACHO ou DESPACHADA), a entrega recebe `valor_repasse = 0` e `faixa_preco_id` nulo, pois não houve deslocamento. Se ocorrer durante o percurso (a partir de EM_ROTA, UC02 A3), o repasse é **integral** e congelado como no passo 4, pois o entregador já se deslocou e precisa retornar à loja.
 6. **Ajuste manual:** "congelado" significa imune a mudanças na tabela de preços, não imune a correções. O operador pode ajustar `valor_repasse` com motivo obrigatório enquanto o caixa do dia estiver aberto, mesmo que a entrega já conste de um recibo pago; cada ajuste é registrado em ENTREGA_AJUSTE_VALOR (UC03 A1). Corrigir uma entrega já vinculada exige cancelar o recibo, o que a libera para novo acerto. Fechado o caixa, o valor torna-se imutável (HU07).
 7. `LOTE_ENTREGA.valor_total_repasse` é a soma do `valor_repasse` das suas entregas.
-8. `RECIBO.valor_total` é a soma do `valor_repasse` das entregas do período em estado final, sem revisão pendente e ainda não vinculadas a nenhum recibo.
+8. `RECIBO.valor_total` é a soma do `valor_repasse` das entregas do período em estado final, sem revisão pendente e ainda não vinculadas a nenhum recibo. Uma entrega contestada pelo entregador (UC08 A1) fica fora dessa soma até que o operador a analise.
 
 **Tratamento da entrega com falha:** uma entrega em FALHA gera repasse **integral** da faixa correspondente, pois o entregador percorreu o trajeto de ida e de volta. O motivo da falha é obrigatório e fica registrado para análise gerencial.
 

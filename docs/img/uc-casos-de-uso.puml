@@ -39,6 +39,7 @@ rectangle "Agiliza Delivery" {
   usecase "UC04 - Monitorar Logística\nem Tempo Real" as UC04
   usecase "UC01 - Gerenciar Fluxo\nde Entregas" as UC01
   usecase "UC02 - Executar Lote\nde Entrega" as UC02
+  usecase "UC08 - Acompanhar\nAcerto" as UC08
   usecase "UC07 - Autenticar-se" as UC07
 }
 
@@ -50,6 +51,8 @@ OP -- UC04
 OP -- UC01
 EXT -- UC01
 ENT -- UC02
+ENT -- UC08
+OP -- UC08
 
 UC06 ..> UC07 : <<include>>
 UC05 ..> UC07 : <<include>>
@@ -57,4 +60,5 @@ UC03 ..> UC07 : <<include>>
 UC04 ..> UC07 : <<include>>
 UC01 ..> UC07 : <<include>>
 UC02 ..> UC07 : <<include>>
+UC08 ..> UC07 : <<include>>
 @enduml
